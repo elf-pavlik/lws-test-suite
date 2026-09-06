@@ -27,7 +27,7 @@
     "authentication":  {"@id": "lwst:authentication"},
     "authorization":   {"@id": "lwst:authorization"},
 
-    "url":             {"@id": "lwst:url",    "@type": "@id"},
+    "url":             {"@id": "lwst:url",    "@type": "xsd:anyURI"},
     "urlTemplate":     {"@id": "lwst:url",    "@type": "xsd:string"},
 
     "read":    {"@id": "odrl:read",  "@type": "@vocab"},
