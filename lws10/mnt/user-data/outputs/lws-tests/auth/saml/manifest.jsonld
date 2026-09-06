@@ -1,6 +1,5 @@
 {
   "@context": [
-    { "@base": "https://raw.githubusercontent.com/w3c/lws-protocol/main/tests/auth/saml/" },
     "../../context.jsonld"
   ],
   "@graph": [
