@@ -38,15 +38,10 @@
                 }
               }
             ],
-            "authentication": null
           },
           "request": {
             "method": "GET",
             "url": "/storage_1/metadata/",
-            "authentication": null,
-            "authorization": null,
-            "linkHeaders": [],
-            "otherHeaders": []
           },
           "response": {
             "statusCode": 401,
@@ -61,7 +56,6 @@
                 "hrefTemplate": "https://storage.example/storage_1/metadata"
               }
             ],
-            "otherHeaders": []
           }
         },
 
@@ -83,14 +77,10 @@
                 }
               }
             ],
-            "authentication": null
           },
           "request": {
             "method": "GET",
             "url": "/alice/description",
-            "authentication": null,
-            "authorization": null,
-            "linkHeaders": [],
             "otherHeaders": [
               { "headerName": "Accept", "headerValue": "application/lws+json" }
             ]
@@ -126,15 +116,10 @@
                 }
               }
             ],
-            "authentication": null
           },
           "request": {
             "method": "GET",
             "url": "/alice/notes/",
-            "authentication": null,
-            "authorization": null,
-            "linkHeaders": [],
-            "otherHeaders": []
           },
           "response": {
             "statusCode": 200,
@@ -165,14 +150,10 @@
                 }
               }
             ],
-            "authentication": null
           },
           "request": {
             "method": "GET",
             "url": "/alice/notes/",
-            "authentication": null,
-            "authorization": null,
-            "linkHeaders": [],
             "otherHeaders": [
               { "headerName": "Accept", "headerValue": "application/lws+json" }
             ]
@@ -180,8 +161,6 @@
           "response": {
             "statusCode": 200,
             "contentType": "application/lws+json",
-            "authenticationChallenge": null,
-            "authorizationHint": null,
             "linkHeaders": [
               {
                 "rel": "linkset",
@@ -224,15 +203,10 @@
                 }
               }
             ],
-            "authentication": null
           },
           "request": {
             "method": "GET",
             "url": "/alice/notes/",
-            "authentication": null,
-            "authorization": null,
-            "linkHeaders": [],
-            "otherHeaders": []
           },
           "response": {
             "statusCode": 401,
@@ -359,16 +333,11 @@
                 }
               }
             ],
-            "authentication": null
           },
           "request": {
             "method": "POST",
             "url": "/alice/notes/",
-            "authentication": null,
-            "authorization": null,
             "contentType": "text/plain",
-            "linkHeaders": [],
-            "otherHeaders": [],
             "body": "some content"
           },
           "response": {
@@ -399,15 +368,10 @@
                 }
               }
             ],
-            "authentication": null
           },
           "request": {
             "method": "GET",
             "url": "/alice/notes/shoppinglist.txt",
-            "authentication": null,
-            "authorization": null,
-            "linkHeaders": [],
-            "otherHeaders": []
           },
           "response": {
             "statusCode": 200,
@@ -455,8 +419,6 @@
             "authentication": "https://id.example/alice",
             "authorization": "Role-Owner",
             "contentType": "text/plain",
-            "linkHeaders": [],
-            "otherHeaders": [],
             "body": "milk\neggs\nbread\n"
           },
           "response": {
@@ -464,7 +426,6 @@
             "linkHeaders": [
               { "rel": "up", "hrefTemplate": "/alice/notes/" }
             ],
-            "otherHeaders": []
           }
         },
 
@@ -493,12 +454,9 @@
             "url": "/alice/notes/shoppinglist.txt",
             "authentication": "https://id.example/alice",
             "authorization": "Role-Owner",
-            "linkHeaders": [],
-            "otherHeaders": []
           },
           "response": {
             "statusCode": 200,
-            "otherHeaders": []
           }
         },
 
@@ -520,15 +478,10 @@
                 }
               }
             ],
-            "authentication": null
           },
           "request": {
             "method": "DELETE",
             "url": "/alice/notes/shoppinglist.txt",
-            "authentication": null,
-            "authorization": null,
-            "linkHeaders": [],
-            "otherHeaders": []
           },
           "response": {
             "statusCode": 401,
@@ -558,14 +511,10 @@
                 }
               }
             ],
-            "authentication": null
           },
           "request": {
             "method": "GET",
             "url": "/alice/notes/.meta",
-            "authentication": null,
-            "authorization": null,
-            "linkHeaders": [],
             "otherHeaders": [
               { "headerName": "Accept", "headerValue": "application/linkset+json" }
             ]
@@ -602,14 +551,10 @@
                 }
               }
             ],
-            "authentication": null
           },
           "request": {
             "method": "GET",
             "url": "/alice/notes/",
-            "authentication": null,
-            "authorization": null,
-            "linkHeaders": [],
             "otherHeaders": [
               { "headerName": "Accept", "headerValue": "application/lws+json" }
             ]
@@ -630,16 +575,9 @@
           "status": "Proposed",
           "comment": "public GET AS:/.well-known/lws-configuration [Accept: json] -> 200 json",
           "source": "https://w3c.github.io/lws-protocol/lws10-core/#authorization-server-discovery",
-          "prereqs": {
-            "hierarchy": [],
-            "authentication": null
-          },
           "request": {
             "method": "GET",
             "url": "https://authorization.example/.well-known/lws-configuration",
-            "authentication": null,
-            "authorization": null,
-            "linkHeaders": [],
             "otherHeaders": [
               { "headerName": "Accept", "headerValue": "application/json" }
             ]
@@ -667,10 +605,6 @@
             "method": "POST",
             "url": "https://authorization.example/token",
             "contentType": "application/x-www-form-urlencoded",
-            "authentication": null,
-            "authorization": null,
-            "linkHeaders": [],
-            "otherHeaders": [],
             "body": "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&resource=https%3A%2F%2Fstorage.example%2Falice%2F&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token&subject_token=<subject-token>"
           },
           "response": {
@@ -688,16 +622,10 @@
           "status": "Proposed",
           "comment": "POST AS:/token [grant_type=token-exchange, resource=unknown] -> 400 json { error }",
           "source": "https://w3c.github.io/lws-protocol/lws10-core/#authorization",
-          "prereqs": {
-            "hierarchy": [],
-            "authentication": null
-          },
           "request": {
             "method": "POST",
             "url": "https://authorization.example/token",
             "contentType": "application/x-www-form-urlencoded",
-            "linkHeaders": [],
-            "otherHeaders": [],
             "body": "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&resource=https%3A%2F%2Funknown.example%2F&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token&subject_token=<subject-token>"
           },
           "response": {
@@ -784,7 +712,6 @@
                 "href": "https://www.w3.org/ns/lws#Container"
               }
             ],
-            "otherHeaders": [],
             "body": ""
           },
           "response": {
@@ -799,7 +726,6 @@
               { "rel": "up",   "hrefTemplate": "/alice/" },
               { "rel": "type", "href": "https://www.w3.org/ns/lws#Container" }
             ],
-            "otherHeaders": []
           }
         }
 
