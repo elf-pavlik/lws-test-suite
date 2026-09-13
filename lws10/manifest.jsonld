@@ -5,7 +5,7 @@
   "@graph": [
     {
       "@type": "Manifest",
-      "@id": "",
+      "@id": "protocol",
       "label": "LWS Protocol 1.0 Test Suite",
       "comment": "Tests for Linked Web Storage Protocol 1.0 (https://www.w3.org/TR/lws10-core/). Tests cover container operations, data resource operations, discovery, authentication, and authorization.",
       "authSuites": [
