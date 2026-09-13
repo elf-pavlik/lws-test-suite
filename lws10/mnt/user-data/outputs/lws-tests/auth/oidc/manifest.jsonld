@@ -22,15 +22,12 @@
               "issuer": "https://identity.example",
               "subject": "https://identity.example/users/alice"
             },
-            "hierarchy": []
           },
           "request": {
             "method": "POST",
             "url": "https://authorization.example/token",
             "contentType": "application/x-www-form-urlencoded",
             "body": "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&resource=https%3A%2F%2Fstorage.example%2Falice%2F&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token&subject_token=<oidc-id-token>",
-            "linkHeaders": [],
-            "otherHeaders": []
           },
           "response": {
             "statusCode": 200,
@@ -52,15 +49,12 @@
               "subject": "https://identity.example/users/alice",
               "expired": true
             },
-            "hierarchy": []
           },
           "request": {
             "method": "POST",
             "url": "https://authorization.example/token",
             "contentType": "application/x-www-form-urlencoded",
             "body": "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&resource=https%3A%2F%2Fstorage.example%2Falice%2F&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token&subject_token=<oidc-expired-id-token>",
-            "linkHeaders": [],
-            "otherHeaders": []
           },
           "response": {
             "statusCode": 400,
@@ -75,7 +69,6 @@
           "status": "Proposed",
           "comment": "A 401 response from a storage server includes WWW-Authenticate with as_uri and realm, enabling OIDC-based auth server discovery.",
           "prereqs": {
-            "authentication": null,
             "hierarchy": [
               {
                 "url": "/alice/notes/",
@@ -89,10 +82,6 @@
           "request": {
             "method": "GET",
             "url": "/alice/notes/",
-            "authentication": null,
-            "authorization": null,
-            "linkHeaders": [],
-            "otherHeaders": []
           },
           "response": {
             "statusCode": 401,

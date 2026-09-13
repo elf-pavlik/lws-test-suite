@@ -18,15 +18,12 @@
           "comment": "A valid did:key authentication credential is accepted by the authorization server.",
           "prereqs": {
             "authentication": "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
-            "hierarchy": []
           },
           "request": {
             "method": "POST",
             "url": "https://authorization.example/token",
             "contentType": "application/x-www-form-urlencoded",
             "body": "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&resource=https%3A%2F%2Fstorage.example%2Falice%2F&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token&subject_token=<did-key-signed-jwt>",
-            "linkHeaders": [],
-            "otherHeaders": []
           },
           "response": {
             "statusCode": 200,
@@ -43,15 +40,12 @@
           "comment": "A did:key credential with an invalid signature is rejected.",
           "prereqs": {
             "authentication": "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
-            "hierarchy": []
           },
           "request": {
             "method": "POST",
             "url": "https://authorization.example/token",
             "contentType": "application/x-www-form-urlencoded",
             "body": "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&resource=https%3A%2F%2Fstorage.example%2Falice%2F&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token&subject_token=<did-key-bad-signature-jwt>",
-            "linkHeaders": [],
-            "otherHeaders": []
           },
           "response": {
             "statusCode": 400,
@@ -65,17 +59,11 @@
           "traits": ["Authn"],
           "status": "Proposed",
           "comment": "A token exchange request with no subject_token is rejected.",
-          "prereqs": {
-            "authentication": null,
-            "hierarchy": []
-          },
           "request": {
             "method": "POST",
             "url": "https://authorization.example/token",
             "contentType": "application/x-www-form-urlencoded",
             "body": "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&resource=https%3A%2F%2Fstorage.example%2Falice%2F",
-            "linkHeaders": [],
-            "otherHeaders": []
           },
           "response": {
             "statusCode": 400,
