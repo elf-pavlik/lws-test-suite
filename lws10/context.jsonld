@@ -50,7 +50,7 @@
     "headerValue":  {"@id": "lwst:headerValue", "@type": "xsd:string"},
 
     "body":    {"@id": "lwst:body", "@type": "xsd:string"},
-    "bodyURL": {"@id": "lwst:body", "@type": "@id"},
+    "bodyURL": {"@id": "lwst:bodyURL", "@type": "@id"},
 
     "response":     {"@id": "lwst:response"},
     "statusCode":   {"@id": "lwst:statusCode", "@type": "xsd:integer"},
