@@ -32,7 +32,7 @@
           "response": {
             "statusCode": 200,
             "contentType": "application/json",
-            "bodyURL": "../../resources/token-response-200.json"
+            "bodyURL": "../../resources/token_response_200.json"
           }
         },
         {
@@ -58,7 +58,7 @@
           },
           "response": {
             "statusCode": 400,
-            "bodyURL": "../../resources/token-response-400.json"
+            "bodyURL": "../../resources/token_response_400.json"
           }
         },
         {

@@ -14,7 +14,7 @@
         "https://www.w3.org/TR/lws10-authn-saml/"
       ],
       "include": [
-        "auth/did-key/manifest.jsonld",
+        "auth/did_key/manifest.jsonld",
         "auth/oidc/manifest.jsonld",
         "auth/saml/manifest.jsonld"
       ],
@@ -94,7 +94,7 @@
                 "hrefTemplate": "/alice/description"
               }
             ],
-            "bodyURL": "resources/storage-description.json"
+            "bodyURL": "resources/storage_description.json"
           }
         },
 
@@ -181,7 +181,7 @@
               }
             ],
             "otherHeaders": [],
-            "bodyURL": "containers/alice-notes.json"
+            "bodyURL": "containers/alice_notes.json"
           }
         },
 
@@ -259,7 +259,7 @@
               { "rel": "up",   "hrefTemplate": "/alice/" },
               { "rel": "type", "href": "https://www.w3.org/ns/lws#Container" }
             ],
-            "bodyURL": "containers/alice-notes.json"
+            "bodyURL": "containers/alice_notes.json"
           }
         },
 
@@ -520,7 +520,7 @@
           "response": {
             "statusCode": 200,
             "contentType": "application/linkset+json",
-            "bodyURL": "linksets/alice-notes.meta.json"
+            "bodyURL": "linksets/alice_notes.meta.json"
           }
         },
 
@@ -561,7 +561,7 @@
             "statusCode": 200,
             "contentType": "application/lws+json",
             "comment": "The response body MUST include shoppinglist.txt in items.",
-            "bodyURL": "containers/alice-notes.json"
+            "bodyURL": "containers/alice_notes.json"
           }
         },
 
@@ -583,7 +583,7 @@
           "response": {
             "statusCode": 200,
             "contentType": "application/json",
-            "bodyURL": "resources/authorization-server-metadata.json"
+            "bodyURL": "resources/authorization_server_metadata.json"
           }
         },
 
@@ -608,7 +608,7 @@
           "response": {
             "statusCode": 200,
             "contentType": "application/json",
-            "bodyURL": "resources/token-response-200.json"
+            "bodyURL": "resources/token_response_200.json"
           }
         },
 
@@ -628,7 +628,7 @@
           },
           "response": {
             "statusCode": 400,
-            "bodyURL": "resources/token-response-400.json"
+            "bodyURL": "resources/token_response_400.json"
           }
         },
 
