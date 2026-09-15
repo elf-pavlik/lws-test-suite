@@ -21,13 +21,13 @@
               "type": "OIDCIdToken",
               "issuer": "https://identity.example",
               "subject": "https://identity.example/users/alice"
-            },
+            }
           },
           "request": {
             "method": "POST",
             "url": "https://authorization.example/token",
             "contentType": "application/x-www-form-urlencoded",
-            "body": "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&resource=https%3A%2F%2Fstorage.example%2Falice%2F&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token&subject_token=<oidc-id-token>",
+            "body": "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&resource=https%3A%2F%2Fstorage.example%2Falice%2F&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token&subject_token=<oidc-id-token>"
           },
           "response": {
             "statusCode": 200,
@@ -48,13 +48,13 @@
               "issuer": "https://identity.example",
               "subject": "https://identity.example/users/alice",
               "expired": true
-            },
+            }
           },
           "request": {
             "method": "POST",
             "url": "https://authorization.example/token",
             "contentType": "application/x-www-form-urlencoded",
-            "body": "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&resource=https%3A%2F%2Fstorage.example%2Falice%2F&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token&subject_token=<oidc-expired-id-token>",
+            "body": "grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&resource=https%3A%2F%2Fstorage.example%2Falice%2F&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token&subject_token=<oidc-expired-id-token>"
           },
           "response": {
             "statusCode": 400,
@@ -81,7 +81,7 @@
           },
           "request": {
             "method": "GET",
-            "url": "/alice/notes/",
+            "url": "/alice/notes/"
           },
           "response": {
             "statusCode": 401,
