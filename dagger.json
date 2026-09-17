@@ -1,0 +1,8 @@
+{
+  "name": "lws-test-suite",
+  "engineVersion": "v0.21.9",
+  "sdk": {
+    "source": "typescript"
+  },
+  "source": ".dagger"
+}
