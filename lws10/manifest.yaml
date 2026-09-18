@@ -2,512 +2,582 @@
 "@graph":
   - "@type": Manifest
     "@id": protocol
-    label: LWS Protocol 1.0 Test Suite
+    name: LWS Protocol 1.0 storage discovery and REST draft
+    status: Proposed
+    source: https://w3c.github.io/lws-protocol/lws10-core/
+    sourceRevision: 8a007c09f9b8a067a19f003de5fa47c9fee00980
     comment: >-
-      Tests for Linked Web Storage Protocol 1.0
-      (https://www.w3.org/TR/lws10-core/). Tests cover container operations,
-      data resource operations, discovery, authentication, and authorization.
-    authSuites:
-      - https://www.w3.org/TR/lws10-authn-ssi-did-key/
-      - https://www.w3.org/TR/lws10-authn-openid/
-      - https://www.w3.org/TR/lws10-authn-saml/
-    include:
-      - auth/did-key/manifest.jsonld
-      - auth/oidc/manifest.jsonld
-      - auth/saml/manifest.jsonld
+      Discussion draft for testing storage discovery and basic REST operations
+      without prescribing authentication or authorization behavior.
+
+    variables:
+      - "@id": urn:lws-tests:variables:storageId
+        "@type": Variable
+        input:
+          environment: LWS_STORAGE_ID
+      - "@id": urn:lws-tests:variables:storageRoot
+        "@type": Variable
+      - "@id": urn:lws-tests:variables:rootLinkset
+        "@type": Variable
+      - "@id": urn:lws-tests:variables:rootEtag
+        "@type": Variable
+      - "@id": urn:lws-tests:variables:container
+        "@type": Variable
+      - "@id": urn:lws-tests:variables:containerLinkset
+        "@type": Variable
+      - "@id": urn:lws-tests:variables:containerEtag
+        "@type": Variable
+      - "@id": urn:lws-tests:variables:dataResource
+        "@type": Variable
+      - "@id": urn:lws-tests:variables:dataLinkset
+        "@type": Variable
+      - "@id": urn:lws-tests:variables:dataEtag
+        "@type": Variable
+      - "@id": urn:lws-tests:variables:replacedDataEtag
+        "@type": Variable
+      - "@id": urn:lws-tests:variables:patchedDataEtag
+        "@type": Variable
+
     entries:
       - "@type": ValidationTest
-        "@id": "#discovery-unauthorized-response-headers"
-        name: discovery-unauthorized-response-headers
-        traits: [Get, Discovery, Private]
+        "@id": "#discover-storage-root"
+        name: discover-storage-root
         status: Proposed
-        comment: "unauthorized GET -> 401 { WWW-Authenticate: [Bearer, as_uri, realm], Link }"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#authorization-server-discovery
-        prereqs:
-          hierarchy:
-            - url: /storage_1/metadata/
-              authorization:
-                read: Role-Owner
-                write: Role-Owner
+        traits: [Get, Discovery]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#storage-description
+        prereqs: []
         request:
           method: GET
-          url: /storage_1/metadata/
-        response:
-          statusCode: 401
-          authenticationChallenge:
-            wwwAuthenticate: Bearer
-            asUri: https://authorization.example
-            realm: https://storage.example/storage_1
-          linkHeaders:
-            - rel: storageDescription
-              hrefTemplate: https://storage.example/storage_1/metadata
-      - "@type": ValidationTest
-        "@id": "#discovery-storage-description"
-        name: discovery-storage-description
-        traits: [Get, Discovery, Public]
-        status: Proposed
-        comment: "public GET [Accept: lws+json] -> 200 lws+json { Link: [storageDescription], body: {@type: Storage, service: storageDescription} }"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#discovery
-        prereqs:
-          hierarchy:
-            - url: /alice/
-              authorization:
-                read: Role-Public
-                write: Role-Owner
-        request:
-          method: GET
-          url: /alice/description
-          otherHeaders:
-            - headerName: Accept
-              headerValue: application/lws+json
+          url:
+            "@id": urn:lws-tests:variables:storageId
+          headers:
+            - fieldName: Accept
+              fieldValue: application/lws+cid
         response:
           statusCode: 200
-          contentType: application/lws+json
-          linkHeaders:
-            - rel: storageDescription
-              hrefTemplate: /alice/description
-          bodyURL: resources/storage-description.json
+          headers:
+            - fieldName: Content-Type
+              fieldValue:
+                "@mediaType": application/lws+cid
+          bodyShape:
+            "@context":
+              "@startsWith":
+                - https://www.w3.org/ns/cid/v1
+                - https://www.w3.org/ns/lws/v1
+            id:
+              "@id": urn:lws-tests:variables:storageId
+            type:
+              "@includes": Storage
+            service:
+              "@contains":
+                type:
+                  "@includes": StorageRoot
+                serviceEndpoint:
+                  "@id": urn:lws-tests:variables:storageRoot
+
       - "@type": ValidationTest
-        "@id": "#discovery-get-links-storageDescription"
-        name: discovery-get-links-storageDescription
-        traits: [Get, Discovery, Public]
+        "@id": "#read-storage-root"
+        name: read-storage-root
         status: Proposed
-        comment: "public GET container -> 200 { Link: [storageDescription] }"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#discovery
-        prereqs:
-          hierarchy:
-            - url: /alice/notes/
-              authorization:
-                read: Role-Public
-                write: Role-Owner
-        request:
-          method: GET
-          url: /alice/notes/
-        response:
-          statusCode: 200
-          linkHeaders:
-            - rel: storageDescription
-              hrefTemplate: /alice/description
-      - "@type": ValidationTest
-        "@id": "#getContainer"
-        name: getContainer
-        traits: [Get, Public, Container]
-        status: Proposed
-        comment: "public GET container [Accept: lws+json] -> 200 lws+json { Link: [linkset, up, type=Container, storageDescription] }"
+        traits: [Get, Container]
         source: https://w3c.github.io/lws-protocol/lws10-core/#read-resource
         prereqs:
-          hierarchy:
-            - url: /alice/notes/
-              authorization:
-                read: Role-Public
-                write: Role-Owner
+          - "@id": "#discover-storage-root"
         request:
           method: GET
-          url: /alice/notes/
-          otherHeaders:
-            - headerName: Accept
-              headerValue: application/lws+json
+          url:
+            "@id": urn:lws-tests:variables:storageRoot
+          headers:
+            - fieldName: Accept
+              fieldValue: application/lws+json
         response:
           statusCode: 200
-          contentType: application/lws+json
-          linkHeaders:
+          headers:
+            - fieldName: Content-Type
+              fieldValue:
+                "@mediaType": application/lws+json
+            - fieldName: ETag
+              fieldValue:
+                "@id": urn:lws-tests:variables:rootEtag
+          links:
             - rel: linkset
-              hrefTemplate: /alice/notes/.meta
-              mediaType: application/linkset+json
-            - rel: up
-              hrefTemplate: /alice/
+              target:
+                "@id": urn:lws-tests:variables:rootLinkset
+              attributes:
+                type: application/linkset+json
             - rel: type
-              href: https://www.w3.org/ns/lws#Container
-            - rel: storageDescription
-              hrefTemplate: /alice/description
-          otherHeaders: []
-          bodyURL: containers/alice-notes.json
-      - "@type": NegativeTest
-        "@id": "#getContainer-private-unauthorized"
-        name: getContainer-private-unauthorized
-        traits: [Get, Private, Container, Authz]
-        status: Proposed
-        comment: "unauthn GET private-container -> 401 { WWW-Authenticate: [Bearer, as_uri, realm] }"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#authorization
-        prereqs:
-          hierarchy:
-            - url: /alice/notes/
-              authorization:
-                read: Role-Owner
-                write: Role-Owner
-        request:
-          method: GET
-          url: /alice/notes/
-        response:
-          statusCode: 401
-          authenticationChallenge:
-            wwwAuthenticate: Bearer
-            asUri: https://authorization.example
-            realm: https://storage.example/alice/
+              target: https://www.w3.org/ns/lws#Container
+            - rel: https://www.w3.org/ns/lws#storage
+              target:
+                "@id": urn:lws-tests:variables:storageId
+          bodyShape:
+            "@context": https://www.w3.org/ns/lws/v1
+            id:
+              "@id": urn:lws-tests:variables:storageRoot
+            type:
+              "@includes": Container
+            totalItems:
+              "@datatype": integer
+            items:
+              "@present": true
+
       - "@type": ValidationTest
-        "@id": "#getContainer-authenticated-owner"
-        name: getContainer-authenticated-owner
-        traits: [Get, Private, Container, Authn, Authz]
+        "@id": "#create-container"
+        name: create-container
         status: Proposed
-        comment: "owner GET private-container [Accept: lws+json] -> 200 lws+json { Link: [linkset, up, type=Container] }"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#read-resource
-        prereqs:
-          hierarchy:
-            - url: /alice/notes/
-              authorization:
-                read: Role-Owner
-                write: Role-Owner
-          authentication: https://id.example/alice
-        request:
-          method: GET
-          url: /alice/notes/
-          authentication: https://id.example/alice
-          authorization: Role-Owner
-          otherHeaders:
-            - headerName: Accept
-              headerValue: application/lws+json
-        response:
-          statusCode: 200
-          contentType: application/lws+json
-          linkHeaders:
-            - rel: linkset
-              hrefTemplate: /alice/notes/.meta
-              mediaType: application/linkset+json
-            - rel: up
-              hrefTemplate: /alice/
-            - rel: type
-              href: https://www.w3.org/ns/lws#Container
-          bodyURL: containers/alice-notes.json
-      - "@type": ValidationTest
-        "@id": "#createDataResource"
-        name: createDataResource
-        traits: [Post, Authn, Authz, Container, DataResource]
-        status: Proposed
-        comment: "owner POST container [Content-Type: text/plain, Slug: shoppinglist.txt] -> 201 { Location, Link: [linkset, up, type=DataResource] }"
+        traits: [Post, Container]
         source: https://w3c.github.io/lws-protocol/lws10-core/#create-resource
         prereqs:
-          hierarchy:
-            - url: /alice/notes/
-              authorization:
-                read: Role-Public
-                write: Role-Owner
-          authentication: https://id.example/alice
+          - "@id": "#read-storage-root"
         request:
           method: POST
-          url: /alice/notes/
-          authentication: https://id.example/alice
-          authorization: Role-Owner
-          contentType: text/plain
-          slug: shoppinglist.txt
-          otherHeaders:
-            - headerName: Content-Length
-              headerValue: "47"
-          bodyURL: resources/shoppinglist.txt
-        response:
-          statusCode: 201
-          locationURL: /alice/notes/shoppinglist.txt
-          linkHeaders:
-            - rel: linkset
-              hrefTemplate: /alice/notes/shoppinglist.txt.meta
-              mediaType: application/linkset+json
-            - rel: up
-              hrefTemplate: /alice/notes/
+          url:
+            "@id": urn:lws-tests:variables:storageRoot
+          links:
             - rel: type
-              href: https://www.w3.org/ns/lws#DataResource
-          otherHeaders:
-            - headerName: Content-Length
-              headerValue: "0"
-      - "@type": NegativeTest
-        "@id": "#createDataResource-unauthorized"
-        name: createDataResource-unauthorized
-        traits: [Post, Authz, Container]
-        status: Proposed
-        comment: "unauthn POST container -> 401 { WWW-Authenticate: [Bearer, as_uri, realm] }"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#authorization
-        prereqs:
-          hierarchy:
-            - url: /alice/notes/
-              authorization:
-                read: Role-Public
-                write: Role-Owner
-        request:
-          method: POST
-          url: /alice/notes/
-          contentType: text/plain
-          body: some content
-        response:
-          statusCode: 401
-          authenticationChallenge:
-            wwwAuthenticate: Bearer
-            asUri: https://authorization.example
-            realm: https://storage.example/alice/
-      - "@type": ValidationTest
-        "@id": "#readDataResource"
-        name: readDataResource
-        traits: [Get, Public, DataResource]
-        status: Proposed
-        comment: "public GET resource -> 200 text/plain { Link: [linkset, up, type=DataResource, storageDescription] }"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#read-resource
-        prereqs:
-          hierarchy:
-            - url: /alice/notes/shoppinglist.txt
-              authorization:
-                read: Role-Public
-                write: Role-Owner
-        request:
-          method: GET
-          url: /alice/notes/shoppinglist.txt
-        response:
-          statusCode: 200
-          contentType: text/plain
-          linkHeaders:
-            - rel: linkset
-              hrefTemplate: /alice/notes/shoppinglist.txt.meta
-              mediaType: application/linkset+json
-            - rel: up
-              hrefTemplate: /alice/notes/
-            - rel: type
-              href: https://www.w3.org/ns/lws#DataResource
-            - rel: storageDescription
-              hrefTemplate: /alice/description
-          bodyURL: resources/shoppinglist.txt
-      - "@type": ValidationTest
-        "@id": "#updateDataResource"
-        name: updateDataResource
-        traits: [Put, Authn, Authz, DataResource]
-        status: Proposed
-        comment: "owner PUT resource [Content-Type: text/plain] -> 200 { Link: [up] }"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#update-resource
-        prereqs:
-          hierarchy:
-            - url: /alice/notes/shoppinglist.txt
-              authorization:
-                read: Role-Public
-                write: Role-Owner
-          authentication: https://id.example/alice
-        request:
-          method: PUT
-          url: /alice/notes/shoppinglist.txt
-          authentication: https://id.example/alice
-          authorization: Role-Owner
-          contentType: text/plain
-          body: |
-            milk
-            eggs
-            bread
-        response:
-          statusCode: 200
-          linkHeaders:
-            - rel: up
-              hrefTemplate: /alice/notes/
-      - "@type": ValidationTest
-        "@id": "#deleteDataResource"
-        name: deleteDataResource
-        traits: [Delete, Authn, Authz, DataResource]
-        status: Proposed
-        comment: owner DELETE resource -> 200
-        source: https://w3c.github.io/lws-protocol/lws10-core/#delete-resource
-        prereqs:
-          hierarchy:
-            - url: /alice/notes/shoppinglist.txt
-              authorization:
-                read: Role-Public
-                write: Role-Owner
-          authentication: https://id.example/alice
-        request:
-          method: DELETE
-          url: /alice/notes/shoppinglist.txt
-          authentication: https://id.example/alice
-          authorization: Role-Owner
-        response:
-          statusCode: 200
-      - "@type": NegativeTest
-        "@id": "#deleteDataResource-unauthorized"
-        name: deleteDataResource-unauthorized
-        traits: [Delete, Authz, DataResource]
-        status: Proposed
-        comment: "unauthn DELETE resource -> 401 { WWW-Authenticate: [Bearer, as_uri, realm] }"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#authorization
-        prereqs:
-          hierarchy:
-            - url: /alice/notes/shoppinglist.txt
-              authorization:
-                read: Role-Public
-                write: Role-Owner
-        request:
-          method: DELETE
-          url: /alice/notes/shoppinglist.txt
-        response:
-          statusCode: 401
-          authenticationChallenge:
-            wwwAuthenticate: Bearer
-            asUri: https://authorization.example
-            realm: https://storage.example/alice/
-      - "@type": ValidationTest
-        "@id": "#getLinkset"
-        name: getLinkset
-        traits: [Get, Public, Container]
-        status: Proposed
-        comment: "public GET /.meta [Accept: linkset+json] -> 200 linkset+json"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#logical-resource-organization
-        prereqs:
-          hierarchy:
-            - url: /alice/notes/
-              authorization:
-                read: Role-Public
-                write: Role-Owner
-        request:
-          method: GET
-          url: /alice/notes/.meta
-          otherHeaders:
-            - headerName: Accept
-              headerValue: application/linkset+json
-        response:
-          statusCode: 200
-          contentType: application/linkset+json
-          bodyURL: linksets/alice-notes.meta.json
-      - "@type": ValidationTest
-        "@id": "#getContainer-containmentIntegrity"
-        name: getContainer-containmentIntegrity
-        traits: [Get, Public, Container]
-        status: Proposed
-        comment: "public GET container [Accept: lws+json] -> 200 lws+json { body.items ∋ member-resource }"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#container-representation
-        prereqs:
-          hierarchy:
-            - url: /alice/notes/
-              authorization:
-                read: Role-Public
-                write: Role-Owner
-            - url: /alice/notes/shoppinglist.txt
-              authorization:
-                read: Role-Public
-                write: Role-Owner
-        request:
-          method: GET
-          url: /alice/notes/
-          otherHeaders:
-            - headerName: Accept
-              headerValue: application/lws+json
-        response:
-          statusCode: 200
-          contentType: application/lws+json
-          comment: The response body MUST include shoppinglist.txt in items.
-          bodyURL: containers/alice-notes.json
-      - "@type": ValidationTest
-        "@id": "#authz-server-metadata-well-known"
-        name: authz-server-metadata-well-known
-        traits: [Get, Discovery, Public]
-        status: Proposed
-        comment: "public GET AS:/.well-known/lws-configuration [Accept: json] -> 200 json"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#authorization-server-discovery
-        request:
-          method: GET
-          url: https://authorization.example/.well-known/lws-configuration
-          otherHeaders:
-            - headerName: Accept
-              headerValue: application/json
-        response:
-          statusCode: 200
-          contentType: application/json
-          bodyURL: resources/authorization-server-metadata.json
-      - "@type": ValidationTest
-        "@id": "#authz-token-exchange-valid"
-        name: authz-token-exchange-valid
-        traits: [Post, Authn, Authz]
-        status: Proposed
-        comment: POST AS:/token [grant_type=token-exchange, subject_token_type=id_token, valid subject_token] -> 200 json { access_token }
-        source: https://w3c.github.io/lws-protocol/lws10-core/#authorization
-        prereqs:
-          hierarchy: []
-          authentication: https://id.example/alice
-        request:
-          method: POST
-          url: https://authorization.example/token
-          contentType: application/x-www-form-urlencoded
-          body: grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&resource=https%3A%2F%2Fstorage.example%2Falice%2F&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token&subject_token=<subject-token>
-        response:
-          statusCode: 200
-          contentType: application/json
-          bodyURL: resources/token-response-200.json
-      - "@type": NegativeTest
-        "@id": "#authz-token-exchange-invalid-resource"
-        name: authz-token-exchange-invalid-resource
-        traits: [Post, Authz]
-        status: Proposed
-        comment: POST AS:/token [grant_type=token-exchange, resource=unknown] -> 400 json { error }
-        source: https://w3c.github.io/lws-protocol/lws10-core/#authorization
-        request:
-          method: POST
-          url: https://authorization.example/token
-          contentType: application/x-www-form-urlencoded
-          body: grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange&resource=https%3A%2F%2Funknown.example%2F&subject_token_type=urn%3Aietf%3Aparams%3Aoauth%3Atoken-type%3Aid_token&subject_token=<subject-token>
-        response:
-          statusCode: 400
-          bodyURL: resources/token-response-400.json
-      - "@type": NegativeTest
-        "@id": "#authz-expired-token-rejected"
-        name: authz-expired-token-rejected
-        traits: [Get, Authz, Private]
-        status: Proposed
-        comment: "GET [Authorization: Bearer <expired>] -> 401 { WWW-Authenticate: [Bearer, as_uri, realm, error=invalid_token] }"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#authorization
-        prereqs:
-          hierarchy:
-            - url: /alice/notes/
-              authorization:
-                read: Role-Owner
-                write: Role-Owner
-          authentication: https://id.example/alice
-        request:
-          method: GET
-          url: /alice/notes/
-          authentication: https://id.example/alice
-          authorization: Role-Owner
-          comment: The Bearer token in the Authorization header is expired.
-          otherHeaders:
-            - headerName: Authorization
-              headerValue: Bearer <expired-token>
-        response:
-          statusCode: 401
-          authenticationChallenge:
-            wwwAuthenticate: Bearer
-            asUri: https://authorization.example
-            realm: https://storage.example/alice/
-            error: invalid_token
-      - "@type": ValidationTest
-        "@id": "#createContainer"
-        name: createContainer
-        traits: [Post, Authn, Authz, Container]
-        status: Proposed
-        comment: "owner POST container [Content-Type: lws+json, Link: type=Container, Slug: notes] -> 201 { Location, Link: [linkset, up, type=Container] }"
-        source: https://w3c.github.io/lws-protocol/lws10-core/#create-resource
-        prereqs:
-          hierarchy:
-            - url: /alice/
-              authorization:
-                read: Role-Public
-                write: Role-Owner
-          authentication: https://id.example/alice
-        request:
-          method: POST
-          url: /alice/
-          authentication: https://id.example/alice
-          authorization: Role-Owner
-          contentType: application/lws+json
-          slug: notes
-          linkHeaders:
-            - rel: type
-              href: https://www.w3.org/ns/lws#Container
+              target: https://www.w3.org/ns/lws#Container
           body: ""
         response:
           statusCode: 201
-          locationURL: /alice/notes/
-          linkHeaders:
-            - rel: linkset
-              hrefTemplate: /alice/notes/.meta
-              mediaType: application/linkset+json
+          headers:
+            - fieldName: Location
+              fieldValue:
+                "@id": urn:lws-tests:variables:container
+          links:
             - rel: up
-              hrefTemplate: /alice/
+              target:
+                "@id": urn:lws-tests:variables:storageRoot
+            - rel: linkset
+              target:
+                "@id": urn:lws-tests:variables:containerLinkset
+              attributes:
+                type: application/linkset+json
+
+      - "@type": ValidationTest
+        "@id": "#head-container"
+        name: head-container
+        status: Proposed
+        traits: [Head, Container]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#read-resource
+        prereqs:
+          - "@id": "#create-container"
+        request:
+          method: HEAD
+          url:
+            "@id": urn:lws-tests:variables:container
+          headers:
+            - fieldName: Accept
+              fieldValue: application/lws+json
+        response:
+          statusCode: 200
+          headers:
+            - fieldName: Content-Type
+              fieldValue:
+                "@mediaType": application/lws+json
+            - fieldName: ETag
+              fieldValue:
+                "@id": urn:lws-tests:variables:containerEtag
+          links:
+            - rel: linkset
+              target:
+                "@id": urn:lws-tests:variables:containerLinkset
+              attributes:
+                type: application/linkset+json
+            - rel: up
+              target:
+                "@id": urn:lws-tests:variables:storageRoot
             - rel: type
-              href: https://www.w3.org/ns/lws#Container
+              target: https://www.w3.org/ns/lws#Container
+            - rel: https://www.w3.org/ns/lws#storage
+              target:
+                "@id": urn:lws-tests:variables:storageId
+          bodyShape:
+            "@absent": true
+
+      - "@type": ValidationTest
+        "@id": "#read-empty-container"
+        name: read-empty-container
+        status: Proposed
+        traits: [Get, Container]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#container-representation
+        prereqs:
+          - "@id": "#create-container"
+        request:
+          method: GET
+          url:
+            "@id": urn:lws-tests:variables:container
+          headers:
+            - fieldName: Accept
+              fieldValue: application/lws+json
+        response:
+          statusCode: 200
+          headers:
+            - fieldName: Content-Type
+              fieldValue:
+                "@mediaType": application/lws+json
+            - fieldName: ETag
+              fieldValue:
+                "@present": true
+          links:
+            - rel: linkset
+              target:
+                "@id": urn:lws-tests:variables:containerLinkset
+              attributes:
+                type: application/linkset+json
+            - rel: up
+              target:
+                "@id": urn:lws-tests:variables:storageRoot
+            - rel: type
+              target: https://www.w3.org/ns/lws#Container
+            - rel: https://www.w3.org/ns/lws#storage
+              target:
+                "@id": urn:lws-tests:variables:storageId
+          bodyShape:
+            "@context": https://www.w3.org/ns/lws/v1
+            id:
+              "@id": urn:lws-tests:variables:container
+            type:
+              "@includes": Container
+            totalItems:
+              "@datatype": integer
+            items: []
+
+      - "@type": ValidationTest
+        "@id": "#create-data-resource"
+        name: create-data-resource
+        status: Proposed
+        traits: [Post, DataResource]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#create-resource
+        prereqs:
+          - "@id": "#head-container"
+          - "@id": "#read-empty-container"
+        request:
+          method: POST
+          url:
+            "@id": urn:lws-tests:variables:container
+          headers:
+            - fieldName: Content-Type
+              fieldValue: application/json
+          body: '{"title":"draft","done":false}'
+        response:
+          statusCode: 201
+          headers:
+            - fieldName: Location
+              fieldValue:
+                "@id": urn:lws-tests:variables:dataResource
+          links:
+            - rel: up
+              target:
+                "@id": urn:lws-tests:variables:container
+            - rel: linkset
+              target:
+                "@id": urn:lws-tests:variables:dataLinkset
+              attributes:
+                type: application/linkset+json
+
+      - "@type": ValidationTest
+        "@id": "#read-data-resource"
+        name: read-data-resource
+        status: Proposed
+        traits: [Get, DataResource]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#read-resource
+        prereqs:
+          - "@id": "#create-data-resource"
+        request:
+          method: GET
+          url:
+            "@id": urn:lws-tests:variables:dataResource
+          headers:
+            - fieldName: Accept
+              fieldValue: application/json
+        response:
+          statusCode: 200
+          headers:
+            - fieldName: Content-Type
+              fieldValue:
+                "@mediaType": application/json
+            - fieldName: ETag
+              fieldValue:
+                "@id": urn:lws-tests:variables:dataEtag
+          links:
+            - rel: linkset
+              target:
+                "@id": urn:lws-tests:variables:dataLinkset
+              attributes:
+                type: application/linkset+json
+            - rel: up
+              target:
+                "@id": urn:lws-tests:variables:container
+            - rel: type
+              target: https://www.w3.org/ns/lws#DataResource
+            - rel: https://www.w3.org/ns/lws#storage
+              target:
+                "@id": urn:lws-tests:variables:storageId
+          bodyShape:
+            title: draft
+            done: false
+
+      - "@type": ValidationTest
+        "@id": "#read-data-linkset"
+        name: read-data-linkset
+        status: Proposed
+        traits: [Get, Metadata]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#metadata
+        prereqs:
+          - "@id": "#create-data-resource"
+        request:
+          method: GET
+          url:
+            "@id": urn:lws-tests:variables:dataLinkset
+          headers:
+            - fieldName: Accept
+              fieldValue: application/linkset+json
+        response:
+          statusCode: 200
+          headers:
+            - fieldName: Content-Type
+              fieldValue:
+                "@mediaType": application/linkset+json
+            - fieldName: ETag
+              fieldValue:
+                "@present": true
+            - fieldName: Allow
+              fieldValue:
+                "@containsTokens": [GET, PATCH]
+            - fieldName: Accept-Patch
+              fieldValue:
+                "@containsToken": application/merge-patch+json
+          bodyShape:
+            linkset:
+              "@contains":
+                anchor:
+                  "@id": urn:lws-tests:variables:dataResource
+
+      - "@type": ValidationTest
+        "@id": "#read-container-with-member"
+        name: read-container-with-member
+        status: Proposed
+        traits: [Get, Container]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#container-representation
+        prereqs:
+          - "@id": "#create-data-resource"
+        request:
+          method: GET
+          url:
+            "@id": urn:lws-tests:variables:container
+          headers:
+            - fieldName: Accept
+              fieldValue: application/lws+json
+        response:
+          statusCode: 200
+          headers:
+            - fieldName: Content-Type
+              fieldValue:
+                "@mediaType": application/lws+json
+            - fieldName: ETag
+              fieldValue:
+                "@present": true
+          bodyShape:
+            id:
+              "@id": urn:lws-tests:variables:container
+            type:
+              "@includes": Container
+            totalItems:
+              "@datatype": integer
+            items:
+              "@contains":
+                id:
+                  "@id": urn:lws-tests:variables:dataResource
+                type:
+                  "@includes": DataResource
+                format: application/json
+
+      - "@type": ValidationTest
+        "@id": "#reject-delete-nonempty-container"
+        name: reject-delete-nonempty-container
+        status: Proposed
+        traits: [Delete, NegativeTest, Container]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#delete-resource
+        prereqs:
+          - "@id": "#create-data-resource"
+        request:
+          method: DELETE
+          url:
+            "@id": urn:lws-tests:variables:container
+        response:
+          statusCode: 409
+
+      - "@type": ValidationTest
+        "@id": "#replace-data-resource"
+        name: replace-data-resource
+        status: Proposed
+        traits: [Put, DataResource]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#update-resource
+        prereqs:
+          - "@id": "#read-data-resource"
+        request:
+          method: PUT
+          url:
+            "@id": urn:lws-tests:variables:dataResource
+          headers:
+            - fieldName: Content-Type
+              fieldValue: application/json
+            - fieldName: If-Match
+              fieldValue:
+                "@id": urn:lws-tests:variables:dataEtag
+          body: '{"title":"replaced","done":false}'
+        response:
+          statusCode:
+            "@oneOf": [200, 204]
+
+      - "@type": ValidationTest
+        "@id": "#read-replaced-data-resource"
+        name: read-replaced-data-resource
+        status: Proposed
+        traits: [Get, DataResource]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#read-resource
+        prereqs:
+          - "@id": "#replace-data-resource"
+        request:
+          method: GET
+          url:
+            "@id": urn:lws-tests:variables:dataResource
+          headers:
+            - fieldName: Accept
+              fieldValue: application/json
+        response:
+          statusCode: 200
+          headers:
+            - fieldName: Content-Type
+              fieldValue:
+                "@mediaType": application/json
+            - fieldName: ETag
+              fieldValue:
+                "@id": urn:lws-tests:variables:replacedDataEtag
+          bodyShape:
+            title: replaced
+            done: false
+
+      - "@type": ValidationTest
+        "@id": "#patch-data-resource"
+        name: patch-data-resource
+        status: Proposed
+        traits: [Patch, DataResource]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#update-resource
+        prereqs:
+          - "@id": "#read-replaced-data-resource"
+        request:
+          method: PATCH
+          url:
+            "@id": urn:lws-tests:variables:dataResource
+          headers:
+            - fieldName: Content-Type
+              fieldValue: application/merge-patch+json
+            - fieldName: If-Match
+              fieldValue:
+                "@id": urn:lws-tests:variables:replacedDataEtag
+          body: '{"done":true}'
+        response:
+          statusCode:
+            "@oneOf": [200, 204]
+
+      - "@type": ValidationTest
+        "@id": "#read-patched-data-resource"
+        name: read-patched-data-resource
+        status: Proposed
+        traits: [Get, DataResource]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#read-resource
+        prereqs:
+          - "@id": "#patch-data-resource"
+        request:
+          method: GET
+          url:
+            "@id": urn:lws-tests:variables:dataResource
+          headers:
+            - fieldName: Accept
+              fieldValue: application/json
+        response:
+          statusCode: 200
+          headers:
+            - fieldName: Content-Type
+              fieldValue:
+                "@mediaType": application/json
+            - fieldName: ETag
+              fieldValue:
+                "@id": urn:lws-tests:variables:patchedDataEtag
+          bodyShape:
+            title: replaced
+            done: true
+
+      - "@type": ValidationTest
+        "@id": "#delete-data-resource"
+        name: delete-data-resource
+        status: Proposed
+        traits: [Delete, DataResource]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#delete-resource
+        prereqs:
+          - "@id": "#read-patched-data-resource"
+          - "@id": "#read-data-linkset"
+          - "@id": "#read-container-with-member"
+          - "@id": "#reject-delete-nonempty-container"
+        request:
+          method: DELETE
+          url:
+            "@id": urn:lws-tests:variables:dataResource
+          headers:
+            - fieldName: If-Match
+              fieldValue:
+                "@id": urn:lws-tests:variables:patchedDataEtag
+        response:
+          statusCode: 204
+
+      - "@type": ValidationTest
+        "@id": "#read-container-after-delete"
+        name: read-container-after-delete
+        status: Proposed
+        traits: [Get, Container]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#delete-resource
+        prereqs:
+          - "@id": "#delete-data-resource"
+        request:
+          method: GET
+          url:
+            "@id": urn:lws-tests:variables:container
+          headers:
+            - fieldName: Accept
+              fieldValue: application/lws+json
+        response:
+          statusCode: 200
+          headers:
+            - fieldName: Content-Type
+              fieldValue:
+                "@mediaType": application/lws+json
+            - fieldName: ETag
+              fieldValue:
+                "@present": true
+          bodyShape:
+            id:
+              "@id": urn:lws-tests:variables:container
+            type:
+              "@includes": Container
+            totalItems:
+              "@datatype": integer
+            items:
+              "@notContains":
+                id:
+                  "@id": urn:lws-tests:variables:dataResource
+
+      - "@type": ValidationTest
+        "@id": "#delete-empty-container"
+        name: delete-empty-container
+        status: Proposed
+        traits: [Delete, Container]
+        source: https://w3c.github.io/lws-protocol/lws10-core/#delete-resource
+        prereqs:
+          - "@id": "#read-container-after-delete"
+        request:
+          method: DELETE
+          url:
+            "@id": urn:lws-tests:variables:container
+        response:
+          statusCode: 204
