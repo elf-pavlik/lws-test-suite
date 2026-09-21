@@ -65,14 +65,14 @@ export class LwsTestSuite {
    * pass --source with a local checkout to test uncommitted changes.
    *
    * Bind it from another container with withServiceBinding("lws-server", svc)
-   * or expose it to the host with `dagger call lws-server ... up --ports 8080:8080`.
+   * or expose it to the host with `dagger call lws-server-service ... up --ports 8080:8080`.
    *
    * lws.base-uri is set to the service hostname so every IRI the server mints
    * (storage description, resources, DPoP htu) is resolvable by clients bound
    * to it inside the test network.
    */
   @func()
-  lwsServer(source?: Directory): Service {
+  lwsServerService(source?: Directory): Service {
     return this.lwsServerBuild(source)
       .withExposedPort(8080)
       .asService({
@@ -165,9 +165,9 @@ export class LwsTestSuite {
    * conformance harness against it as the test harness.
    */
   @func()
-  async test(source?: Directory, touchstone?: Directory): Promise<string> {
+  async lwsServer(source?: Directory, touchstone?: Directory): Promise<string> {
     return this.touchstoneRun(
-      this.lwsServer(source),
+      this.lwsServerService(source),
       "lws-server",
       "http://lws-server:8080/",
       touchstone,
@@ -189,7 +189,7 @@ export class LwsTestSuite {
    * to test uncommitted changes.
    */
   @func()
-  sparqServer(source?: Directory): Service {
+  sparqService(source?: Directory): Service {
     const build = dag
       .container()
       .from("rust:1.97-slim-bookworm")
@@ -218,7 +218,7 @@ export class LwsTestSuite {
   @func()
   async sparq(source?: Directory, touchstone?: Directory): Promise<string> {
     return this.touchstoneRun(
-      this.sparqServer(source),
+      this.sparqService(source),
       "sparq",
       "http://sparq:3000/",
       touchstone,
