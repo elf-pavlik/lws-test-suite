@@ -40,6 +40,23 @@ export class LwsTestSuite {
     )
   }
 
+  private lwsNetSource(source?: Directory): Directory {
+    return source ?? dag.git("https://github.com/langsamu/LWS.net").head().tree()
+  }
+
+  /**
+   * The canonical lws10/ manifest tree: an explicit Directory (e.g. the
+   * checkout's own lws10), or git HEAD of the canonical
+   * https://github.com/lws-contrib/lws-test-suite repo — never the stale copy
+   * embedded in the LWS.net repo.
+   */
+  private lws10Manifests(manifests?: Directory): Directory {
+    return (
+      manifests ??
+      dag.git("https://github.com/lws-contrib/lws-test-suite").head().tree().directory("lws10")
+    )
+  }
+
   /**
    * Builds the lws-server (Maven / Spring Boot, JDK 25) from source into a
    * container image. Dependencies are cached in a cache volume.
@@ -161,17 +178,97 @@ export class LwsTestSuite {
   }
 
   /**
-   * Starts the lws-server bound as "lws-server" and runs the Touchstone
-   * conformance harness against it as the test harness.
+   * The service for a named implementation under test.
+   */
+  private sut(
+    server: string,
+    source?: Directory,
+  ): { service: Service; host: string; baseUrl: string } {
+    if (server === "sparq") {
+      return {
+        service: this.sparqService(source),
+        host: "sparq",
+        baseUrl: "http://sparq:3000/",
+      }
+    }
+    if (server === "lws-server") {
+      return {
+        service: this.lwsServerService(source),
+        host: "lws-server",
+        baseUrl: "http://lws-server:8080/",
+      }
+    }
+    throw new Error(`unknown server: ${server} (expected lws-server or sparq)`)
+  }
+
+  /**
+   * Runs the selected suite harness against the selected implementation.
+   * Fails the run on any failing assertion.
+   *
+   * CLI:
+   *   dagger call test --harness touchstone --server lws-server
+   *   dagger call test --harness lws-net --server lws-server --manifests lws10
+   *   dagger call test --harness touchstone --server sparq
+   *   dagger call test --harness lws-net --server sparq
    */
   @func()
-  async lwsServer(source?: Directory, touchstone?: Directory): Promise<string> {
-    return this.touchstoneRun(
-      this.lwsServerService(source),
-      "lws-server",
-      "http://lws-server:8080/",
-      touchstone,
-    )
+  async test(
+    // The suite harness: "touchstone" (default) or "lws-net".
+    harness: string = "touchstone",
+    // The implementation under test: "lws-server" (default) or "sparq".
+    server: string = "lws-server",
+    // Override the implementation source (local checkout of the server).
+    source?: Directory,
+    // Override the harness source (touchstone / LWS.net repo checkout).
+    suite?: Directory,
+    // Override the lws10 manifest tree (lws-net only; default: lws-contrib HEAD).
+    manifests?: Directory,
+  ): Promise<string> {
+    const { service, host, baseUrl } = this.sut(server, source)
+    if (harness === "touchstone") {
+      return this.touchstoneRun(service, host, baseUrl, suite)
+    }
+    if (harness === "lws-net") {
+      return this.lwsNetSuite(suite, manifests)
+        .withServiceBinding(host, service)
+        .withEnvVariable("Suite__BaseUri", baseUrl)
+        .withExec(["dotnet", "test", "Suite/Test"])
+        .stdout()
+    }
+    throw new Error(`unknown harness: ${harness} (expected touchstone or lws-net)`)
+  }
+
+  /**
+   * Builds the LWS.net suite container with NON-stale manifests: the canonical
+   * lws10/ tree from THIS module's repo is copied into the suite's embedded
+   * Resources before compilation (dash -> underscore, the mapping Resources.cs
+   * applies at lookup), so the checked-in copy can never be used.
+   */
+  private lwsNetSuite(suite?: Directory, manifests?: Directory): Container {
+    const manifestsSync =
+      "set -e; " +
+      "rm -rf /src/Suite/Model/Resources; " +
+      "mkdir -p /src/Suite/Model/Resources; " +
+      "cp -r /manifests/containers /manifests/context.jsonld /manifests/linksets " +
+      "/manifests/manifest.jsonld /manifests/resources /manifests/mnt " +
+      "/src/Suite/Model/Resources/; " +
+      // The canonical root manifest includes auth/*/manifest.jsonld files that
+      // do not exist yet in lws10 (the generated auth manifests live under
+      // mnt/user-data/outputs/lws-tests/...); relink those includes, exactly
+      // like the suite's own vendored copy did (content stays canonical).
+      "sed -E -i '" +
+      "s#\"auth/(did[-_]key|oidc|saml)/manifest.jsonld\"#" +
+      "\"mnt/user-data/outputs/lws-tests/auth/\\1/manifest.jsonld\"#g' " +
+      "/src/Suite/Model/Resources/manifest.jsonld; " +
+      "find /src/Suite/Model/Resources -depth -name '*-*' | while read -r p; do " +
+      "  mv \"$p\" \"$(dirname \"$p\")/$(basename \"$p\" | tr - _)\"; done"
+    return dag
+      .container()
+      .from("mcr.microsoft.com/dotnet/sdk:10.0")
+      .withDirectory("/src", this.lwsNetSource(suite))
+      .withDirectory("/manifests", this.lws10Manifests(manifests))
+      .withWorkdir("/src")
+      .withExec(["sh", "-c", manifestsSync])
   }
 
   /**
@@ -209,19 +306,5 @@ export class LwsTestSuite {
       .withEnvVariable("SOLID_SERVER_OPEN_MODE", "1")
       .asService({ args: ["/build/target/debug/sparq-lws-core"] })
       .withHostname("sparq")
-  }
-
-  /**
-   * Runs the Touchstone conformance harness against the sparq LWS server
-   * (sparq-lws-core) bound as "sparq".
-   */
-  @func()
-  async sparq(source?: Directory, touchstone?: Directory): Promise<string> {
-    return this.touchstoneRun(
-      this.sparqService(source),
-      "sparq",
-      "http://sparq:3000/",
-      touchstone,
-    )
   }
 }
