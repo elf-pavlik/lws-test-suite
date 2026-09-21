@@ -30,6 +30,16 @@ export class LwsTestSuite {
     return source ?? dag.git("https://github.com/ebremer/touchstone").head().tree()
   }
 
+  private sparqSource(source?: Directory): Directory {
+    return (
+      source ??
+      dag
+        .git("https://github.com/elf-pavlik/sparq")
+        .branch("feat/open-mode")
+        .tree()
+    )
+  }
+
   /**
    * Builds the lws-server (Maven / Spring Boot, JDK 25) from source into a
    * container image. Dependencies are cached in a cache volume.
@@ -112,21 +122,28 @@ export class LwsTestSuite {
    * the test harness.
    *
    * The harness container registers the lws-server service as the SUT target
-   * in a targets.yaml registry (Touchstone only accepts target ids, never raw
+  /**
+   * Runs the Touchstone conformance harness against a bound service.
+   *
+   * The harness container registers the service as the SUT target in a
+   * targets.yaml registry (Touchstone only accepts target ids, never raw
    * URLs) and runs the core module. Reports land in a touchstone-runs cache
    * volume under /work/runs. Exit codes are preserved: 0 conformant, 1
    * non-conformant (fails the run), 2 harness misconfiguration.
    */
-  @func()
-  async test(source?: Directory, touchstone?: Directory): Promise<string> {
-    const server = this.lwsServer(source)
+  private touchstoneRun(
+    server: Service,
+    alias: string,
+    baseUrl: string,
+    touchstone?: Directory,
+  ): Promise<string> {
     return this.touchstoneImage(touchstone)
-      .withServiceBinding("lws-server", server)
+      .withServiceBinding(alias, server)
       .withNewFile(
         "/work/targets.yaml",
         "targets:\n" +
           "  sut:\n" +
-          "    baseUrl: http://lws-server:8080/\n" +
+          `    baseUrl: ${baseUrl}\n` +
           "    adapter: env\n",
       )
       .withMountedCache("/work/runs", dag.cacheVolume("touchstone-runs"))
@@ -141,5 +158,70 @@ export class LwsTestSuite {
         "--manifests", "manifests",
       ])
       .stdout()
+  }
+
+  /**
+   * Starts the lws-server bound as "lws-server" and runs the Touchstone
+   * conformance harness against it as the test harness.
+   */
+  @func()
+  async test(source?: Directory, touchstone?: Directory): Promise<string> {
+    return this.touchstoneRun(
+      this.lwsServer(source),
+      "lws-server",
+      "http://lws-server:8080/",
+      touchstone,
+    )
+  }
+
+  /**
+   * Builds and starts the sparq LWS server (sparq-lws-core from the sparq
+   * workspace, https://github.com/sparq-org/sparq), returned as a Dagger
+   * service bound as "sparq" on port 3000.
+   *
+   * Serves an ephemeral in-memory store (PSS_SPARQ_BACKEND default) in open mode:
+   * SOLID_SERVER_OPEN_MODE=1 (a dev seed on the feat/open-mode branch) grants the
+   * public foaf:Agent Read/Write/Append/Control on the storage root, so anonymous
+   * clients can provision and write.
+   *
+   * The source defaults to the feat/open-mode branch of the
+   * https://github.com/elf-pavlik/sparq fork; pass --source with a local checkout
+   * to test uncommitted changes.
+   */
+  @func()
+  sparqServer(source?: Directory): Service {
+    const build = dag
+      .container()
+      .from("rust:1.97-slim-bookworm")
+      .withMountedCache("/usr/local/cargo/registry", dag.cacheVolume("sparq-registry"))
+      .withMountedCache("/build/target", dag.cacheVolume("sparq-target"))
+      .withDirectory("/build", this.sparqSource(source))
+      .withWorkdir("/build")
+      // dagger materializes git trees with deterministic mtimes and cargo
+      // fingerprints sources by mtime, so a changed branch would silently skip
+      // recompiling. Touch the crate sources to force a rebuild.
+      .withExec(["sh", "-c", "touch crates/sparq-lws-core/src/*.rs"])
+      .withExec(["cargo", "build", "-p", "sparq-lws-core"])
+    return build
+      .withExposedPort(3000)
+      .withEnvVariable("SOLID_SERVER_BIND", "0.0.0.0:3000")
+      .withEnvVariable("SOLID_SERVER_BASE_URL", "http://sparq:3000")
+      .withEnvVariable("SOLID_SERVER_OPEN_MODE", "1")
+      .asService({ args: ["/build/target/debug/sparq-lws-core"] })
+      .withHostname("sparq")
+  }
+
+  /**
+   * Runs the Touchstone conformance harness against the sparq LWS server
+   * (sparq-lws-core) bound as "sparq".
+   */
+  @func()
+  async sparq(source?: Directory, touchstone?: Directory): Promise<string> {
+    return this.touchstoneRun(
+      this.sparqServer(source),
+      "sparq",
+      "http://sparq:3000/",
+      touchstone,
+    )
   }
 }
