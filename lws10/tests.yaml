@@ -1,94 +1,98 @@
+# LWS 1.0 test suite.
+#
+# Steps are written as higher-level LWS operations (CreateResource,
+# ReadResource, UpdateResource, DeleteResource -- cf.
+# https://w3c.github.io/lws-protocol/lws10-core/#operations). The N3
+# rules in rules.n3 map each operation to a basic HTTP request and
+# default expected response described with HTTP-in-RDF
+# (https://www.w3.org/TR/HTTP-in-RDF10/). `expects` states a
+# test-specific response pattern (an http:Response) that overrides the
+# rule-derived default.
+#
+# `target` is a URI template resolved by the harness at execution time:
+# `param` references an execution parameter (bound from `baseUri` or by
+# an extractor of an earlier step); `base` + `relative` resolves a
+# relative reference against a parameter. Extractors bind parameters
+# from the actual response: `path` is a JSONPath into the body, `header`
+# names a response header.
 "@context":
-  "@vocab": http://example.com/
+  "@vocab": https://www.w3.org/ns/lws-tests/v1#
+  http: http://www.w3.org/2011/http#
+  mf: https://www.w3.org/ns/test-manifest#
+  rdfs: http://www.w3.org/2000/01/rdf-schema#
+  xsd: http://www.w3.org/2001/XMLSchema#
   type:
     "@id": "@type"
     "@type": "@id"
+  name:
+    "@id": mf:name
+  comment:
+    "@id": rdfs:comment
   tests:
     "@container": "@list"
   steps:
     "@container": "@list"
   extractors:
     "@container": "@list"
+  statusCodeValue:
+    "@id": http:statusCodeValue
+    "@type": xsd:integer
 name: LWS Test Suite
+rules: rules.n3
 tests:
   - name: Test1
+    comment: create a resource, read it, delete it, then reading it again fails with 404
     steps:
-      - request:
-          method: GET
-          uri:
-            base:
-              param: baseUri
-            relative:
-              value: /
+      # discovery: read the storage description, find the storage root
+      - type: ReadResource
+        target:
+          base:
+            param: baseUri
+          relative: /
         extractors:
           - param: storageRoot
             path: $.service[?@.type == 'StorageRoot'].serviceEndpoint
-      - request:
-          method: POST
-          uri:
-            param: storageRoot
+      - type: CreateResource
+        target:
+          param: storageRoot
         extractors:
           - param: newResource
             header: Location
-      - request:
-          method: GET
-          uri:
-            param: newResource
-        extractors:
-          - type: StatusCodeExtractor
-            param: status1
-      - request:
-          method: DELETE
-          uri:
-            param: newResource
-        extractors:
-          - type: StatusCodeExtractor
-            param: status2
-      - request:
-          method: GET
-          uri:
-            param: newResource
-        extractors:
-          - type: StatusCodeExtractor
-            param: status3
-    assertion:
-      type: EqualityAssertion
-      param: status3
-      value: "404"
+      - type: ReadResource
+        target:
+          param: newResource
+      - type: DeleteResource
+        target:
+          param: newResource
+      - type: ReadResource
+        target:
+          param: newResource
+        expects:
+          type: http:Response
+          statusCodeValue: 404
   - name: Test2
+    comment: create a resource, read it, delete it with 204
     steps:
-      - request:
-          method: GET
-          uri:
-            base:
-              param: baseUri
-            relative:
-              value: /
+      - type: ReadResource
+        target:
+          base:
+            param: baseUri
+          relative: /
         extractors:
           - param: storageRoot
             path: $.service[?@.type == 'StorageRoot'].serviceEndpoint
-      - request:
-          method: POST
-          uri:
-            param: storageRoot
+      - type: CreateResource
+        target:
+          param: storageRoot
         extractors:
           - param: newResource
             header: Location
-      - request:
-          method: GET
-          uri:
-            param: newResource
-        extractors:
-          - type: StatusCodeExtractor
-            param: status1
-      - request:
-          method: DELETE
-          uri:
-            param: newResource
-        extractors:
-          - type: StatusCodeExtractor
-            param: status2
-    assertion:
-      type: EqualityAssertion
-      param: status2
-      value: "204"
+      - type: ReadResource
+        target:
+          param: newResource
+      - type: DeleteResource
+        target:
+          param: newResource
+        expects:
+          type: http:Response
+          statusCodeValue: 204

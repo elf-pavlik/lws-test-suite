@@ -1,0 +1,106 @@
+# LWS operations -> HTTP-in-RDF mapping rules
+#
+# Test steps are written as higher-level LWS operations
+# (lwst:CreateResource, lwst:ReadResource, lwst:UpdateResource,
+# lwst:DeleteResource -- cf. the operations in
+# https://w3c.github.io/lws-protocol/lws10-core/#operations).
+# These rules map each operation to a basic HTTP request, described with
+# the W3C HTTP Vocabulary in RDF (https://www.w3.org/TR/HTTP-in-RDF10/),
+# plus the response an LWS server is expected to return by default.
+#
+# Usage: once a harness has substituted execution parameters
+# (lwst:target templates resolved to a concrete http:absoluteURI), an N3
+# reasoner run over the test data plus this rule set completes the
+# request description of each step (method etc.) and adds
+# lwst:expectedResponse -- the default response an LWS server is
+# expected to return; a test may override it with lwst:expects.
+#
+# The rules deliberately use only Basic Graph Patterns so they run on
+# the n3.js reasoner (https://www.npmjs.com/package/n3#Reasoning):
+# * no built-ins (e.g. list:in), so header expectations are expressed
+#   as individual http:headers statements rather than members of one
+#   header list;
+# * blank nodes in a conclusion are created once per rule, not per
+#   firing -- so per-step request data (method, URI, ...) attaches to
+#   the operation node itself: the operation doubles as the
+#   HTTP-in-RDF request description. Expected responses carry content
+#   that is constant per operation type, so they can safely share a
+#   conclusion blank node.
+
+@prefix http:     <http://www.w3.org/2011/http#> .
+@prefix methods:  <http://www.w3.org/2011/http-methods#> .
+@prefix headers:  <http://www.w3.org/2011/http-headers#> .
+@prefix statuses: <http://www.w3.org/2011/http-statusCodes#> .
+@prefix lwst:     <https://www.w3.org/ns/lws-tests/v1#> .
+@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+
+# Read resource -- https://w3c.github.io/lws-protocol/lws10-core/#read-resource
+{
+  ?op a lwst:ReadResource ;
+      http:absoluteURI ?uri .
+}
+=>
+{
+  ?op a http:Request ;
+      http:methodName "GET" ;
+      http:mthd methods:GET ;
+      lwst:expectedResponse [
+        a http:Response ;
+        http:statusCodeValue "200"^^xsd:integer ;
+        http:sc statuses:OK
+      ] .
+} .
+
+# Create resource -- https://w3c.github.io/lws-protocol/lws10-core/#create-resource
+# POST to the target container; the server creates a new resource and
+# responds 201 Created with a Location header pointing at it.
+{
+  ?op a lwst:CreateResource ;
+      http:absoluteURI ?uri .
+}
+=>
+{
+  ?op a http:Request ;
+      http:methodName "POST" ;
+      http:mthd methods:POST ;
+      lwst:expectedResponse [
+        a http:Response ;
+        http:statusCodeValue "201"^^xsd:integer ;
+        http:sc statuses:Created ;
+        http:headers [
+          a http:ResponseHeader ;
+          http:fieldName "Location" ;
+          http:hdrName headers:location
+        ]
+      ] .
+} .
+
+# Update resource -- https://w3c.github.io/lws-protocol/lws10-core/#update-resource
+# PUT (full replacement) binding. PATCH is an alternative binding for
+# partial updates, left out until the LWS spec settles update semantics.
+# Success status codes vary (200/204/205), so tests assert expectations
+# explicitly via lwst:expects.
+{
+  ?op a lwst:UpdateResource ;
+      http:absoluteURI ?uri .
+}
+=>
+{
+  ?op a http:Request ;
+      http:methodName "PUT" ;
+      http:mthd methods:PUT .
+} .
+
+# Delete resource -- https://w3c.github.io/lws-protocol/lws10-core/#delete-resource
+# LWS servers answer 200 or 204 on success, so no default status here;
+# tests assert the expected status explicitly (cf. Test2).
+{
+  ?op a lwst:DeleteResource ;
+      http:absoluteURI ?uri .
+}
+=>
+{
+  ?op a http:Request ;
+      http:methodName "DELETE" ;
+      http:mthd methods:DELETE .
+} .
