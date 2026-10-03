@@ -28,7 +28,7 @@ _:b2 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://www.w3.org/ns/lw
 _:b2 <https://www.w3.org/ns/lws-tests/v1#extractors> _:b41 .
 _:b2 <https://www.w3.org/ns/lws-tests/v1#target> _:b4 .
 _:b20 <https://www.w3.org/ns/lws-tests/v1#param> "baseUri" .
-_:b21 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://www.w3.org/ns/lws-tests/v1#CreateResource> .
+_:b21 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://www.w3.org/ns/lws-tests/v1#CreateDataResource> .
 _:b21 <https://www.w3.org/ns/lws-tests/v1#extractors> _:b42 .
 _:b21 <https://www.w3.org/ns/lws-tests/v1#target> _:b23 .
 _:b22 <https://www.w3.org/ns/lws-tests/v1#header> "Location" .
@@ -78,7 +78,7 @@ _:b42 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/
 _:b43 <http://www.w3.org/1999/02/22-rdf-syntax-ns#first> _:b7 .
 _:b43 <http://www.w3.org/1999/02/22-rdf-syntax-ns#rest> <http://www.w3.org/1999/02/22-rdf-syntax-ns#nil> .
 _:b5 <https://www.w3.org/ns/lws-tests/v1#param> "baseUri" .
-_:b6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://www.w3.org/ns/lws-tests/v1#CreateResource> .
+_:b6 <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> <https://www.w3.org/ns/lws-tests/v1#CreateDataResource> .
 _:b6 <https://www.w3.org/ns/lws-tests/v1#extractors> _:b43 .
 _:b6 <https://www.w3.org/ns/lws-tests/v1#target> _:b8 .
 _:b7 <https://www.w3.org/ns/lws-tests/v1#header> "Location" .

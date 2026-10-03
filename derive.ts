@@ -90,7 +90,7 @@ for (const test of listItems(objectOf(suite, LWST + "tests"))) {
   console.log(`\n${objectOf(test, "https://www.w3.org/ns/test-manifest#name")?.value}`);
   for (const step of listItems(objectOf(test, LWST + "steps"))) {
     const op = objectOf(step, RDF + "type")?.value;
-    const method = objectOf(step, HTTP + "methodName")?.value;
+    const method = objectOf(step, HTTP + "mthd")?.value;
     const uri = objectOf(step, HTTP + "absoluteURI")?.value;
     const expects = objectOf(step, LWST + "expects");
     const status = expects && objectOf(expects, HTTP + "statusCodeValue")?.value;
@@ -100,7 +100,7 @@ for (const test of listItems(objectOf(suite, LWST + "tests"))) {
       continue;
     }
     console.log(
-      `  ${localName(op)} -> ${method} ${uri}` + (status ? `  (expects ${status})` : ""),
+      `  ${localName(op)} -> ${localName(method)} ${uri}` + (status ? `  (expects ${status})` : ""),
     );
   }
 }

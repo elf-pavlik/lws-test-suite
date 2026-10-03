@@ -1,106 +1,300 @@
-# LWS operations -> HTTP-in-RDF mapping rules
+# LWS operations -> HTTP-in-RDF request mapping rules
 #
 # Test steps are written as higher-level LWS operations
-# (lwst:CreateResource, lwst:ReadResource, lwst:UpdateResource,
-# lwst:DeleteResource -- cf. the operations in
+# (lwst:CreateResource, lwst:CreateContainer, lwst:CreateDataResource,
+# lwst:ReadContainer, lwst:ReadStorageDescription, lwst:ReadResource,
+# lwst:UpdateResource, lwst:DeleteResource -- cf. the operations in
 # https://w3c.github.io/lws-protocol/lws10-core/#operations).
-# These rules map each operation to a basic HTTP request, described with
-# the W3C HTTP Vocabulary in RDF (https://www.w3.org/TR/HTTP-in-RDF10/),
-# plus the response an LWS server is expected to return by default.
-#
-# Usage: once a harness has substituted execution parameters
-# (lwst:target templates resolved to a concrete http:absoluteURI), an N3
-# reasoner run over the test data plus this rule set completes the
-# request description of each step (method etc.) and adds
-# lwst:expectedResponse -- the default response an LWS server is
-# expected to return; a test may override it with lwst:expects.
+# Each rule maps one operation to a basic HTTP request, described with
+# the W3C HTTP Vocabulary in RDF (https://www.w3.org/TR/HTTP-in-RDF10/):
+# the operation node doubles as an http:Request carrying its resolved
+# http:absoluteURI and an http:mthd method. The operation's lwst:target
+# is a parameter IRI; its value is bound with lwst:value, and the rule
+# resolves the two into the request's http:absoluteURI. Expected
+# response values are asserted per test; the rules only expose the
+# generic parts of an actual http:Response under the suite's well-known
+# parameter names (param:status-code, param:location, param:content --
+# see the last section).
 #
 # The rules deliberately use only Basic Graph Patterns so they run on
-# the n3.js reasoner (https://www.npmjs.com/package/n3#Reasoning):
-# * no built-ins (e.g. list:in), so header expectations are expressed
-#   as individual http:headers statements rather than members of one
-#   header list;
-# * blank nodes in a conclusion are created once per rule, not per
-#   firing -- so per-step request data (method, URI, ...) attaches to
-#   the operation node itself: the operation doubles as the
-#   HTTP-in-RDF request description. Expected responses carry content
-#   that is constant per operation type, so they can safely share a
-#   conclusion blank node.
+# the n3.js reasoner (https://www.npmjs.com/package/n3#Reasoning).
+# Conclusion blank nodes are created once per rule, not per firing --
+# so per-step request data (method, URI, ...) attaches to the operation
+# node itself: the operation doubles as the HTTP-in-RDF request
+# description.
 
 @prefix http:     <http://www.w3.org/2011/http#> .
 @prefix methods:  <http://www.w3.org/2011/http-methods#> .
-@prefix headers:  <http://www.w3.org/2011/http-headers#> .
-@prefix statuses: <http://www.w3.org/2011/http-statusCodes#> .
 @prefix lwst:     <https://www.w3.org/ns/lws-tests/v1#> .
-@prefix xsd:      <http://www.w3.org/2001/XMLSchema#> .
+@prefix param:    <https://w3id.org/lws/test/param#> .
+@prefix cnt:      <http://www.w3.org/2011/content#> .
+@prefix lws:      <https://www.w3.org/ns/lws#> .
+@prefix did:      <https://www.w3.org/ns/did#> .
+
+# Read container -- https://w3c.github.io/lws-protocol/lws10-core/#read-resource
+# GET the container listing, negotiating the LWS container media type.
+# The Accept header is constant per operation, so it can safely live on
+# the (per-rule, shared) conclusion blank node.
+{
+  ?op a lwst:ReadContainer ;
+      lwst:target ?target .
+  ?target lwst:value ?uri .
+}
+=>
+{
+  ?op a http:Request ;
+      http:absoluteURI ?uri ;
+      http:mthd methods:GET ;
+      http:headers [
+        a http:RequestHeader ;
+        http:fieldName "Accept" ;
+        http:fieldValue "application/lws+json"
+      ] .
+} .
+
+# Read storage description -- https://w3c.github.io/lws-protocol/lws10-core/#discovery
+# GET the storage description, negotiating the LWS CID media type.
+# The Accept header is constant per operation, so it can safely live on
+# the (per-rule, shared) conclusion blank node.
+{
+  ?op a lwst:ReadStorageDescription ;
+      lwst:target ?target .
+  ?target lwst:value ?uri .
+}
+=>
+{
+  ?op a http:Request ;
+      http:absoluteURI ?uri ;
+      http:mthd methods:GET ;
+      http:headers [
+        a http:RequestHeader ;
+        http:fieldName "Accept" ;
+        http:fieldValue "application/lws+cid"
+      ] .
+} .
 
 # Read resource -- https://w3c.github.io/lws-protocol/lws10-core/#read-resource
 {
   ?op a lwst:ReadResource ;
-      http:absoluteURI ?uri .
+      lwst:target ?target .
+  ?target lwst:value ?uri .
 }
 =>
 {
   ?op a http:Request ;
-      http:methodName "GET" ;
-      http:mthd methods:GET ;
-      lwst:expectedResponse [
-        a http:Response ;
-        http:statusCodeValue "200"^^xsd:integer ;
-        http:sc statuses:OK
-      ] .
+      http:absoluteURI ?uri ;
+      http:mthd methods:GET .
 } .
 
 # Create resource -- https://w3c.github.io/lws-protocol/lws10-core/#create-resource
-# POST to the target container; the server creates a new resource and
-# responds 201 Created with a Location header pointing at it.
+# Generic create binding: POST to the target container. Use the more
+# specific CreateContainer / CreateDataResource when the kind of the new
+# resource is known.
 {
   ?op a lwst:CreateResource ;
-      http:absoluteURI ?uri .
+      lwst:target ?target .
+  ?target lwst:value ?uri .
 }
 =>
 {
   ?op a http:Request ;
-      http:methodName "POST" ;
+      http:absoluteURI ?uri ;
+      http:mthd methods:POST .
+} .
+
+# Create container -- https://w3c.github.io/lws-protocol/lws10-core/#create-resource
+# POST to the target container with a Link header rel="type" naming the
+# Container type; the server assigns the new container's identifier.
+# The header content is constant per operation, so it can safely live on
+# the (per-rule, shared) conclusion blank node.
+{
+  ?op a lwst:CreateContainer ;
+      lwst:target ?target .
+  ?target lwst:value ?uri .
+}
+=>
+{
+  ?op a http:Request ;
+      http:absoluteURI ?uri ;
       http:mthd methods:POST ;
-      lwst:expectedResponse [
-        a http:Response ;
-        http:statusCodeValue "201"^^xsd:integer ;
-        http:sc statuses:Created ;
-        http:headers [
-          a http:ResponseHeader ;
-          http:fieldName "Location" ;
-          http:hdrName headers:location
-        ]
+      http:headers [
+        a http:RequestHeader ;
+        http:fieldName "Link" ;
+        http:fieldValue '<https://www.w3.org/ns/lws#Container>; rel="type"'
       ] .
+} .
+
+# Create data resource -- https://w3c.github.io/lws-protocol/lws10-core/#create-resource
+# POST to the target container; the server creates a new data resource
+# and assigns its identifier. The spec binds the initial content as the
+# request body with an appropriate Content-Type header; content is
+# per-step test data, so body and Content-Type are not derived here
+# until the suite models it (cf. lwst:content).
+{
+  ?op a lwst:CreateDataResource ;
+      lwst:target ?target .
+  ?target lwst:value ?uri .
+}
+=>
+{
+  ?op a http:Request ;
+      http:absoluteURI ?uri ;
+      http:mthd methods:POST .
 } .
 
 # Update resource -- https://w3c.github.io/lws-protocol/lws10-core/#update-resource
 # PUT (full replacement) binding. PATCH is an alternative binding for
 # partial updates, left out until the LWS spec settles update semantics.
-# Success status codes vary (200/204/205), so tests assert expectations
-# explicitly via lwst:expects.
+# As with CreateDataResource, the replacement content is per-step test
+# data, so body and Content-Type are not derived here.
 {
   ?op a lwst:UpdateResource ;
-      http:absoluteURI ?uri .
+      lwst:target ?target .
+  ?target lwst:value ?uri .
 }
 =>
 {
   ?op a http:Request ;
-      http:methodName "PUT" ;
+      http:absoluteURI ?uri ;
       http:mthd methods:PUT .
 } .
 
 # Delete resource -- https://w3c.github.io/lws-protocol/lws10-core/#delete-resource
-# LWS servers answer 200 or 204 on success, so no default status here;
-# tests assert the expected status explicitly (cf. Test2).
 {
   ?op a lwst:DeleteResource ;
-      http:absoluteURI ?uri .
+      lwst:target ?target .
+  ?target lwst:value ?uri .
 }
 =>
 {
   ?op a http:Request ;
-      http:methodName "DELETE" ;
+      http:absoluteURI ?uri ;
       http:mthd methods:DELETE .
+} .
+
+# ---- generic HTTP-in-RDF response values -> step parameters ----
+#
+# PROPOSAL -- assumed per-step RDF shape (to be reconciled with the
+# final suite framing); each step being its own graph keeps the
+# constant parameter IRIs scoped to that step:
+#
+#   ?op    http:resp ?resp .                        # request -> response
+#   ?resp  a http:Response ;
+#          http:sc statuses:Created ;
+#          http:headers [ a http:ResponseHeader ;
+#                         http:fieldName "Location" ;
+#                         http:fieldValue ?location ] ;
+#          http:body ?body .
+#
+#   ?step  lwst:operation  ?op ;
+#          lwst:assertions ?assertion ;
+#          lwst:bindings   ?binding .
+#   ?assertion lwst:received param:status-code ;
+#              lwst:expected statuses:OK .
+#   ?binding   lwst:id       param:location ;
+#              lwst:return   param:new-resource .
+#
+# The suite names generic parts of an HTTP response by well-known
+# parameters. A parameter is an IRI denoting a variable, bound to its
+# value with lwst:value:
+#
+#   param:status-code   lwst:value ?code .
+#   param:location      lwst:value ?location .
+#   param:content       lwst:value ?body .
+#
+# Each rule below resolves one well-known parameter against the actual
+# http:Response (per step, i.e. within the step's own graph, so the
+# constant parameter IRIs do not collide across steps).
+
+# status code IRI -> param:status-code (http:sc ranges over
+# http:StatusCode, i.e. the IRI in the http-status-codes namespace;
+# http:statusCodeValue would instead give the numeric literal)
+{
+  ?resp a http:Response ;
+        http:sc ?code .
+}
+=>
+{
+  param:status-code lwst:value ?code .
+} .
+
+# Location response header -> param:location
+{
+  ?resp a http:Response ;
+        http:headers ?header .
+  ?header http:fieldName "Location" ;
+          http:fieldValue ?location .
+}
+=>
+{
+  param:location lwst:value ?location .
+} .
+
+# response body -> param:content
+{
+  ?resp a http:Response ;
+        http:body ?body .
+}
+=>
+{
+  param:content lwst:value ?body .
+} .
+
+# step binding: copy the value of the parameter named by lwst:id to the
+# parameter named by lwst:return
+{
+  ?binding lwst:id ?source ;
+           lwst:return ?target .
+  ?source lwst:value ?value .
+}
+=>
+{
+  ?target lwst:value ?value .
+} .
+
+# ---- ReadStorageDescription response content ----
+#
+# The response body is the storage description as RDF, modelled with
+# Content-in-RDF: the message body is a cnt:ContentAsRDF whose
+# cnt:graph is the description graph (a quoted graph / named graph).
+#
+#   cnt:ContentAsRDF rdfs:subClassOf cnt:Content .
+#   cnt:graph rdfs:domain cnt:ContentAsRDF ; rdfs:range rdf:Resource .
+#
+#   ?resp a http:Response ;
+#         http:sc statuses:OK ;
+#         http:body [ a cnt:ContentAsRDF ;
+#                      cnt:graph {
+#                        <https://storage.example/>
+#                            a lws:Storage ;
+#                            did:service [ a lws:StorageRoot ;
+#                                          did:serviceEndpoint
+#                                            <https://storage.example/root/> ] .
+#                      } ] .
+#
+# (cnt:ContentAsRDF / cnt:graph are not in the published Content-in-RDF
+# 1.0 vocabulary yet -- deriving them here as proposed terms.)
+#
+# The full-N3 form reads the service out of the quoted graph (needs a
+# reasoner with log:includes, e.g. eye-js):
+#
+#   { ?resp a http:Response ; http:body ?body .
+#     ?body a cnt:ContentAsRDF ; cnt:graph ?g .
+#     ?g log:includes { ?service a lws:StorageRoot ;
+#                       did:serviceEndpoint ?storage-root } }
+#   => { param:storage-root lwst:value ?storage-root . } .
+#
+# The n3.js reasoner cannot match nested graphs or log:includes, and
+# cannot join premises across graphs (a premise spanning the default
+# graph and a quoted graph does not fire). Its plain patterns do however
+# match triples inside a quoted graph, so the description graph's
+# StorageRoot service is read out directly. The step's own graph scopes
+# this to the ReadStorageDescription step that produced the body.
+{
+  ?service a lws:StorageRoot ;
+           did:serviceEndpoint ?storage-root .
+}
+=>
+{
+  param:storage-root lwst:value ?storage-root .
 } .

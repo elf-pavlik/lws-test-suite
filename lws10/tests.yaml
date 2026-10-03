@@ -1,6 +1,7 @@
 # LWS 1.0 test suite.
 #
-# Steps are written as higher-level LWS operations (CreateResource,
+# Steps are written as higher-level LWS operations (CreateContainer,
+# CreateDataResource,
 # ReadResource, UpdateResource, DeleteResource -- cf.
 # https://w3c.github.io/lws-protocol/lws10-core/#operations). The N3
 # rules in rules.n3 map each operation to a basic HTTP request and
@@ -28,6 +29,10 @@
     "@id": mf:name
   comment:
     "@id": rdfs:comment
+  lwst: https://w3id.org/lws/test/
+  case: lwst:case/
+  param: lwst:param#
+  shape: lwst:shape/
   tests:
     "@container": "@list"
   steps:
@@ -40,59 +45,78 @@
 name: LWS Test Suite
 rules: rules.n3
 tests:
-  - name: Test1
+  - id: can-delete-data-resource
+    type: TestCase
+    name: Can delete a data resource
     comment: create a resource, read it, delete it, then reading it again fails with 404
+    inputs:
+      - param:storage
+    constants:
+      - param:storage
+      - param:storage-root
+      - param:new-resource
+      - param:read-after-delete-status
     steps:
-      # discovery: read the storage description, find the storage root
-      - type: ReadResource
-        target:
-          base:
-            param: baseUri
-          relative: /
-        extractors:
-          - param: storageRoot
-            path: $.service[?@.type == 'StorageRoot'].serviceEndpoint
-      - type: CreateResource
-        target:
-          param: storageRoot
-        extractors:
-          - param: newResource
-            header: Location
-      - type: ReadResource
-        target:
-          param: newResource
-      - type: DeleteResource
-        target:
-          param: newResource
-      - type: ReadResource
-        target:
-          param: newResource
-        expects:
-          type: http:Response
-          statusCodeValue: 404
-  - name: Test2
-    comment: create a resource, read it, delete it with 204
-    steps:
-      - type: ReadResource
-        target:
-          base:
-            param: baseUri
-          relative: /
-        extractors:
-          - param: storageRoot
-            path: $.service[?@.type == 'StorageRoot'].serviceEndpoint
-      - type: CreateResource
-        target:
-          param: storageRoot
-        extractors:
-          - param: newResource
-            header: Location
-      - type: ReadResource
-        target:
-          param: newResource
-      - type: DeleteResource
-        target:
-          param: newResource
-        expects:
-          type: http:Response
-          statusCodeValue: 204
+        - "@graph":
+          operation:
+            type: ReadStorageDescription
+            target: param:storage
+          bindings:
+            - param:storage-root
+          assertions:
+            - type: IdentityAssertion
+              received: param:status-code
+              expected: http-status:OK
+            - type: ExistanceAssertion
+              received: param:storage-root
+            - type: ShapeAssertion
+              received: param:content
+              validate: shape:DescriptionResource
+
+        - "@graph":
+          operation:
+            type: CreateResource
+            target: param:storage-root
+          bindings:
+            - id: param:location
+              return: param:new-resource
+          assertions:
+            - type: IdentityAssertion
+              received: param:status-code
+              expected: http-status:Created
+
+        - "@graph":
+          operation:
+          - type: ReadResource
+            target: param:new-resource
+          assertions:
+            - type: IdentityAssertion
+              received: param:status-code
+              expected: http-status:OK
+
+        - "@graph":
+          operation:
+          - type: DeleteResource
+            target: param:new-resource
+          assertions:
+            - type: IdentityAssertion
+              received: param:status-code
+              expected: http-status:NoContent
+
+        - "@graph":
+          operation:
+          - type: ReadResource
+            target: param:new-resource
+          bindings:
+            - id: param:status-code
+              return: param:read-after-delete-status
+          assertions:
+            - type: IdentityAssertion
+              received: param:status-code
+              expected: http-status:NotFound
+
+    # example of an assertion on a bound const
+    assertions:
+      - type: IdentityAssertion
+        received: param:read-after-delete-status
+        expected: http-status:NotFound

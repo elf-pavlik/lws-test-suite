@@ -21,16 +21,13 @@ _:b0_b10 lwst:param "newResource".
 _:b0_b11 a lwst:DeleteResource, http:Request;
     lwst:target _:b0_b12;
     http:absoluteURI <https://storage.example/alice/cc55f71c-0bb7-4d5e-9f21-2a1b3c4d5e6f>;
-    http:methodName "DELETE";
     http:mthd methods:DELETE.
 _:b0_b12 lwst:param "newResource".
 _:b0_b13 a lwst:ReadResource, http:Request;
     lwst:target _:b0_b15;
     lwst:expects _:b0_b14;
     http:absoluteURI <https://storage.example/alice/cc55f71c-0bb7-4d5e-9f21-2a1b3c4d5e6f>;
-    http:methodName "GET";
-    http:mthd methods:GET;
-    lwst:expectedResponse _:n3-2.
+    http:mthd methods:GET.
 _:b0_b14 a http:Response;
     http:statusCodeValue 404.
 _:b0_b15 lwst:param "newResource".
@@ -43,9 +40,7 @@ _:b0_b17 a lwst:ReadResource, http:Request;
     lwst:target _:b0_b19;
     lwst:extractors _:b0_b40;
     http:absoluteURI <https://storage.example/>;
-    http:methodName "GET";
-    http:mthd methods:GET;
-    lwst:expectedResponse _:n3-2.
+    http:mthd methods:GET.
 _:b0_b40 rdf:first _:b0_b18;
     rdf:rest rdf:nil.
 _:b0_b19 lwst:base _:b0_b20;
@@ -57,20 +52,16 @@ _:b0_b2 a lwst:ReadResource, http:Request;
     lwst:target _:b0_b4;
     lwst:extractors _:b0_b41;
     http:absoluteURI <https://storage.example/>;
-    http:methodName "GET";
-    http:mthd methods:GET;
-    lwst:expectedResponse _:n3-2.
+    http:mthd methods:GET.
 _:b0_b41 rdf:first _:b0_b3;
     rdf:rest rdf:nil.
 _:b0_b4 lwst:base _:b0_b5;
     lwst:relative "/".
-_:b0_b21 a lwst:CreateResource, http:Request;
+_:b0_b21 a lwst:CreateDataResource, http:Request;
     lwst:target _:b0_b23;
     lwst:extractors _:b0_b42;
     http:absoluteURI <https://storage.example/alice/>;
-    http:methodName "POST";
-    http:mthd methods:POST;
-    lwst:expectedResponse _:n3-5.
+    http:mthd methods:POST.
 _:b0_b42 rdf:first _:b0_b22;
     rdf:rest rdf:nil.
 _:b0_b23 lwst:param "storageRoot".
@@ -79,15 +70,12 @@ _:b0_b22 lwst:param "newResource";
 _:b0_b24 a lwst:ReadResource, http:Request;
     lwst:target _:b0_b25;
     http:absoluteURI <https://storage.example/alice/cc55f71c-0bb7-4d5e-9f21-2a1b3c4d5e6f>;
-    http:methodName "GET";
-    http:mthd methods:GET;
-    lwst:expectedResponse _:n3-2.
+    http:mthd methods:GET.
 _:b0_b25 lwst:param "newResource".
 _:b0_b26 a lwst:DeleteResource, http:Request;
     lwst:target _:b0_b28;
     lwst:expects _:b0_b27;
     http:absoluteURI <https://storage.example/alice/cc55f71c-0bb7-4d5e-9f21-2a1b3c4d5e6f>;
-    http:methodName "DELETE";
     http:mthd methods:DELETE.
 _:b0_b27 a http:Response;
     http:statusCodeValue 204.
@@ -98,21 +86,17 @@ _:b0_b3 lwst:param "storageRoot";
     lwst:path "$.service[?@.type == 'StorageRoot'].serviceEndpoint".
 _:b0_b32 rdf:first _:b0_b6;
     rdf:rest _:b0_b33.
-_:b0_b6 a lwst:CreateResource, http:Request;
+_:b0_b6 a lwst:CreateDataResource, http:Request;
     lwst:target _:b0_b8;
     lwst:extractors _:b0_b43;
     http:absoluteURI <https://storage.example/alice/>;
-    http:methodName "POST";
-    http:mthd methods:POST;
-    lwst:expectedResponse _:n3-5.
+    http:mthd methods:POST.
 _:b0_b33 rdf:first _:b0_b9;
     rdf:rest _:b0_b34.
 _:b0_b9 a lwst:ReadResource, http:Request;
     lwst:target _:b0_b10;
     http:absoluteURI <https://storage.example/alice/cc55f71c-0bb7-4d5e-9f21-2a1b3c4d5e6f>;
-    http:methodName "GET";
-    http:mthd methods:GET;
-    lwst:expectedResponse _:n3-2.
+    http:mthd methods:GET.
 _:b0_b34 rdf:first _:b0_b11;
     rdf:rest _:b0_b35.
 _:b0_b35 rdf:first _:b0_b13;
@@ -129,13 +113,3 @@ _:b0_b43 rdf:first _:b0_b7;
 _:b0_b7 lwst:param "newResource";
     lwst:header "Location".
 _:b0_b8 lwst:param "storageRoot".
-_:n3-2 a http:Response;
-    http:statusCodeValue 200;
-    http:sc statuses:OK.
-_:n3-5 a http:Response;
-    http:statusCodeValue 201;
-    http:sc statuses:Created;
-    http:headers _:n3-6.
-_:n3-6 a http:ResponseHeader;
-    http:fieldName "Location";
-    http:hdrName headers:location.

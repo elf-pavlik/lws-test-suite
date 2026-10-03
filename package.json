@@ -6,9 +6,11 @@
   "scripts": {
     "yaml-to-ttl": "bun yaml-to-ttl.ts lws10/tests.yaml lws10/tests.ttl",
     "ttl-to-yaml": "bun ttl-to-yaml.ts lws10/tests.ttl lws10/tests.yaml",
-    "derive": "bun derive.ts lws10/tests.ttl lws10/rules.n3 lws10/tests.derived.ttl"
+    "derive": "bun derive.ts lws10/tests.ttl lws10/rules.n3 lws10/tests.derived.ttl",
+    "harness": "bun harness.ts lws10/tests.yaml lws10/rules.n3"
   },
   "dependencies": {
+    "@comunica/query-sparql-rdfjs": "^5.4.1",
     "jsonld": "^9.0.0",
     "n3": "^2.8.0",
     "yaml": "^2.6.0"
