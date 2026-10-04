@@ -36,6 +36,7 @@ import { randomUUID } from "node:crypto";
 import { DataFactory, Parser, Reasoner, Store } from "n3";
 import { QueryEngine } from "@comunica/query-sparql-rdfjs";
 import { createVocabulary } from "rdf-vocabulary";
+import { JSONPath } from "jsonpath-plus";
 import { parse as parseYaml } from "yaml";
 import jsonld from "jsonld";
 import { LWS_TEST_CONTEXT, documentLoader } from "./context";
@@ -69,6 +70,7 @@ const lwst = createVocabulary(
   "https://www.w3.org/ns/lws-tests/v1#",
   "value", "operation", "target", "inputs", "constants", "bindings",
   "assertions", "steps", "received", "expected", "id", "return",
+  "jsonString", "jsonPath",
 );
 
 // namespaces with dynamic local names (status names come from the cached
@@ -300,18 +302,22 @@ function check(label: string, ok: boolean, detail: string) {
 async function assertStep(a: any, scopeGraph: any) {
   const typeTerm = one(a, rdf.terms.type, scopeGraph);
   const type = typeTerm ? short(typeTerm.value) : "(unknown)";
+  // received is optional: assertions like MatchJsonPathAssertion use
+  // jsonString/expected/jsonPath instead
   const received = one(a, lwst.terms.received, scopeGraph);
-  if (!received) {
+  if (!received && type !== "MatchJsonPathAssertion") {
     report.skipped++;
     console.log(`  SKIP ${type} — no received param`);
     return;
   }
-  if (received.termType !== "NamedNode") {
+  if (received && received.termType !== "NamedNode") {
     report.skipped++;
     console.log(`  SKIP ${type} — received is not an IRI: ${received.value}`);
     return;
   }
-  const value = paramValue(received.value, scopeGraph) ?? paramValue(received.value, defaultGraph());
+  const value = received
+    ? (paramValue(received.value, scopeGraph) ?? paramValue(received.value, defaultGraph()))
+    : undefined;
   let got: string | undefined;
   switch (value?.termType) {
     case "NamedNode":
@@ -326,7 +332,7 @@ async function assertStep(a: any, scopeGraph: any) {
       return;
   }
 
-  const rLabel = short(received.value);
+  const rLabel = received ? short(received.value) : "?";
   switch (type) {
     case "ExistanceAssertion":
       check(`ExistanceAssertion ${rLabel}`, got !== undefined, got ?? "not bound");
@@ -340,6 +346,34 @@ async function assertStep(a: any, scopeGraph: any) {
         `IdentityAssertion ${rLabel} == ${expected ? short(expected.value) : "∅"}`,
         got === expectedValue,
         `received=${got ?? "∅"}`,
+      );
+      return;
+    }
+    case "MatchJsonPathAssertion": {
+      // jsonString / expected are params; jsonPath is a plain string
+      const jsonString = one(a, lwst.terms.jsonString, scopeGraph);
+      const jsonPath = one(a, lwst.terms.jsonPath, scopeGraph);
+      const expected = one(a, lwst.terms.expected, scopeGraph);
+      const picked = (t: any) =>
+        t?.termType === "NamedNode"
+          ? (paramValue(t.value, scopeGraph) ?? paramValue(t.value, defaultGraph()))
+          : undefined;
+      const js = picked(jsonString);
+      const ev = picked(expected);
+      const path = jsonPath?.termType === "Literal" ? jsonPath.value : undefined;
+      let gotPath: string | undefined;
+      if (js?.termType === "Literal" && path !== undefined) {
+        try {
+          const found = JSONPath({ path, json: JSON.parse(js.value) });
+          gotPath = found.length === 1 ? String(found[0]) : JSON.stringify(found);
+        } catch {
+          gotPath = undefined; // invalid JSON or path
+        }
+      }
+      check(
+        `MatchJsonPathAssertion ${short(jsonString?.value ?? "?")} ${path ?? "?"} == ${short(expected?.value ?? "?")}`,
+        gotPath !== undefined && gotPath === ev?.value,
+        `got=${gotPath ?? "∅"} expected=${ev?.value ?? "∅"}`,
       );
       return;
     }
@@ -475,6 +509,7 @@ for (let ti = 0; ti < jsonLd.tests.length; ti++) {
             b = blankNode();
             store.addQuad(resp, http.terms.body, b, stepGraph);
             store.addQuad(b, rdf.terms.type, cnt.terms.ContentAsRDF, stepGraph);
+            store.addQuad(b, cnt.terms.chars, literal(bodyText), stepGraph); // raw text for param:text
             console.log(`  response ${res.status} (${contentType}) — ${bodyQuads.length} body triple(s) into step graph`);
           } catch (e: any) {
             console.log(`  response ${res.status} — could not parse RDF body: ${e.message}`);

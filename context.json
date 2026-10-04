@@ -59,6 +59,16 @@
       }
     }
   },
+  "MatchJsonPathAssertion": {
+    "@context": {
+      "jsonString": {
+        "@type": "@id"
+      },
+      "expected": {
+        "@type": "@id"
+      }
+    }
+  },
   "inputs": {
     "@id": "https://www.w3.org/ns/lws-tests/v1#inputs",
     "@type": "@id"

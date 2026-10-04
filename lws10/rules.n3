@@ -240,6 +240,19 @@
   param:content lwst:value ?body .
 } .
 
+# response body text -> param:text (the harness records cnt:chars on the
+# content node for every body, RDF-parsed or not, so raw text is always
+# available for e.g. JSONPath assertions)
+{
+  ?resp a http:Response ;
+        http:body ?body .
+  ?body cnt:chars ?text .
+}
+=>
+{
+  param:text lwst:value ?text .
+} .
+
 # step binding: copy the value of the parameter named by lwst:id to the
 # parameter named by lwst:return
 {

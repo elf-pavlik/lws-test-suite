@@ -44,6 +44,10 @@ tests:
               expected: http-status:OK
             - type: ExistanceAssertion
               received: param:storage-root
+            - type: MatchJsonPathAssertion
+              jsonString: param:text
+              expected: param:storage-root
+              jsonPath: $.service[?(@.type == 'StorageRoot')].serviceEndpoint
             - type: ShapeAssertion
               received: param:content
               validate: shape:DescriptionResource
@@ -120,6 +124,10 @@ tests:
               expected: http-status:OK
             - type: ExistanceAssertion
               received: param:storage-root
+            - type: MatchJsonPathAssertion
+              jsonString: param:text
+              expected: param:storage-root
+              jsonPath: $.service[?(@.type == 'StorageRoot')].serviceEndpoint
             - type: ShapeAssertion
               received: param:content
               validate: shape:DescriptionResource
