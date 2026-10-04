@@ -32,36 +32,53 @@
  */
 import { readFile } from "node:fs/promises";
 import { dirname } from "node:path";
+import { randomUUID } from "node:crypto";
 import { DataFactory, Parser, Reasoner, Store } from "n3";
 import { QueryEngine } from "@comunica/query-sparql-rdfjs";
+import { createVocabulary } from "rdf-vocabulary";
 import { parse as parseYaml } from "yaml";
 import jsonld from "jsonld";
+import { LWS_TEST_CONTEXT, documentLoader } from "./context";
 
 const { namedNode, blankNode, literal, defaultGraph } = DataFactory;
 
-const RDF = {
-  type: namedNode("http://www.w3.org/1999/02/22-rdf-syntax-ns#type"),
-};
-const HTTP = "http://www.w3.org/2011/http#";
-const METHODS = "http://www.w3.org/2011/http-methods#";
-const STATUSES = "http://www.w3.org/2011/http-statusCodes#";
-const LWST = "https://www.w3.org/ns/lws-tests/v1#";
+// ---------------------------------------------------------------------------
+// Typed vocabularies (rdf-vocabulary): `vocab.Name` is the IRI string,
+// `vocab.terms.Name` is an RDF/JS NamedNode. Namespaces without a fixed
+// local-name set (param:, statusCodes:) stay plain namespace strings.
+// ---------------------------------------------------------------------------
+
+const rdf = createVocabulary(
+  "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+  "type", "first", "rest", "nil",
+);
+const http = createVocabulary(
+  "http://www.w3.org/2011/http#",
+  "Request", "Response", "RequestHeader", "ResponseHeader",
+  "mthd", "absoluteURI", "headers", "sc", "fieldName", "fieldValue", "body",
+);
+const methods = createVocabulary(
+  "http://www.w3.org/2011/http-methods#",
+  "GET", "POST", "PUT", "DELETE", "PATCH",
+);
+const cnt = createVocabulary(
+  "http://www.w3.org/2011/content#",
+  "ContentAsRDF", "ContentAsText", "chars",
+);
+const lwst = createVocabulary(
+  "https://www.w3.org/ns/lws-tests/v1#",
+  "value", "operation", "target", "inputs", "constants", "bindings",
+  "assertions", "steps", "received", "expected", "id", "return",
+);
+
+// namespaces with dynamic local names (status names come from the cached
+// vocabulary; params are arbitrary manifest-defined names) plus the base
+// namespaces of the vocabularies above, for string templating
+const LWST = lwst.namespace;
+const HTTP = http.namespace;
+const CNT = cnt.namespace;
 const PARAM = "https://w3id.org/lws/test/param#";
-const CNT = "http://www.w3.org/2011/content#";
 
-const p = (ns: string, name: string) => namedNode(ns + name);
-const pv = (ns: string, name: string) => namedNode(ns + name); // value node
-
-const lwst = {
-  value: p(LWST, "value"),
-  operation: p(LWST, "operation"),
-  target: p(LWST, "target"),
-  inputs: p(LWST, "inputs"),
-  constants: p(LWST, "constants"),
-  bindings: p(LWST, "bindings"),
-  assertions: p(LWST, "assertions"),
-  steps: p(LWST, "steps"),
-};
 
 // ---------------------------------------------------------------------------
 // HTTP status codes vocabulary: cached as Turtle next to the manifest
@@ -101,83 +118,35 @@ async function lookupStatusIri(status: number): Promise<string | null> {
 // Manifest -> JSON-LD -> RDF (one named graph per step)
 // ---------------------------------------------------------------------------
 
-/** Expand the compact IRIs the manifest uses ("param:x", "http-status:OK"). */
-const expand = (v: string): string => {
-  if (v.startsWith("param:")) return PARAM + v.slice("param:".length);
-  if (v.startsWith("http-status:")) return STATUSES + v.slice("http-status:".length);
-  return v;
-};
+/** Short label of an IRI (last # or / segment) for logs. */
+const short = (v: string): string => v.slice(Math.max(v.lastIndexOf("#"), v.lastIndexOf("/")) + 1);
 
 /**
- * The manifest's context: keep the author's terms, drop @list containers,
- * add the http-status prefix and force @id coercion on every property that
- * holds a parameter / status / shape reference (JSON-LD keeps uncoerced
- * compact IRIs in plain string values as literals, which would break the
- * rules' IRI matching).
+ * Reshape the manifest into JSON-LD with a named graph per step. A step that
+ * already carries a real "@graph" (with an authored graph name) is passed
+ * through untouched; a flat step (whose "@graph": null is only a marker) is
+ * wrapped so jsonld gives it a (blank-node) graph name -- the harness
+ * remaps those to internal urn:uuid IRIs after conversion.
+ *
+ * The @context comes from the shared context module: either the manifest
+ * references the context IRI (https://w3id.org/lws/test/context), which
+ * documentLoader() serves, or we use the canonical context object directly.
  */
-function manifestContext(doc: any): any {
-  const ctx = { ...(doc["@context"] ?? {}), "http-status": STATUSES };
-  for (const key of ["tests", "steps", "extractors", "bindings", "assertions"]) {
-    const term = ctx[key];
-    if (term && typeof term === "object") {
-      ctx[key] = { ...term };
-      delete ctx[key]["@container"];
-    }
-  }
-  const asIri = (pred: string) => ({ "@id": pred, "@type": "@id" });
-  const ctx2: Record<string, any> = {
-    ...ctx,
-    inputs: asIri(LWST + "inputs"),
-    constants: asIri(LWST + "constants"),
-    target: asIri(LWST + "target"),
-    received: asIri(LWST + "received"),
-    expected: asIri(LWST + "expected"),
-    validate: asIri(LWST + "validate"),
-    id: asIri(LWST + "id"),
-    return: asIri(LWST + "return"),
-    bindings: { "@id": LWST + "bindings", "@type": "@id" },
-  };
-  return ctx2;
-}
-
-/** Reshape the manifest into JSON-LD with a named graph per step. */
 function toJsonLd(doc: any): any {
-  const context = manifestContext(doc);
-  const tests = (doc.tests ?? []).map((t: any, ti: number) => {
-    const steps = (t.steps ?? []).map((s: any, si: number) => {
-      const { ["@graph"]: _marker, ...body } = s; // current manifests use "@graph": null as a marker
-      const graphId = `https://w3id.org/lws/test/case/${encodeURIComponent(t.id ?? `test-${ti}`)}/step/${si}`;
-      return { "@id": graphId, "@graph": [body] };
+  const context =
+    typeof doc["@context"] === "string" ? doc["@context"] : LWS_TEST_CONTEXT;
+  const tests = (doc.tests ?? []).map((t: any) => {
+    const steps = (t.steps ?? []).map((s: any) => {
+      if (Array.isArray(s["@graph"])) return s; // authored by the manifest
+      const { ["@graph"]: _marker, ...body } = s;
+      return { "@graph": [body] };
     });
     return { ...t, steps };
   });
-  // NB: @context must come AFTER the ...doc spread, or the manifest's own
-  // (uncoerced) context would override the coercion terms above.
+  // NB: @context must come AFTER the ...doc spread, or an inline manifest
+  // context would override the canonical one above.
   return { ...doc, "@context": context, tests };
 }
-
-// documentLoader: cache remote contexts; stub the unpublished lws/v1 context
-const remoteLoader = jsonld.documentLoaders.node();
-const contextCache = new Map<string, any>();
-const LWS_V1_STUB = {
-  "@context": {
-    Storage: "https://www.w3.org/ns/lws#Storage",
-    StorageRoot: "https://www.w3.org/ns/lws#StorageRoot",
-    Container: "https://www.w3.org/ns/lws#Container",
-    DataResource: "https://www.w3.org/ns/lws#DataResource",
-  },
-};
-const documentLoader = async (url: string, options: any) => {
-  if (url === "https://www.w3.org/ns/lws/v1") {
-    return { contextUrl: null, document: LWS_V1_STUB, documentUrl: url };
-  }
-  if (contextCache.has(url)) {
-    return { contextUrl: null, document: contextCache.get(url), documentUrl: url };
-  }
-  const res = await remoteLoader(url, options);
-  contextCache.set(url, res.document);
-  return res;
-};
 
 /** Parse an RDF response body and return its quads (default graph only). */
 async function parseRdfBody(text: string, contentType: string): Promise<any[]> {
@@ -217,9 +186,29 @@ await loadStatusCodes(dirname(manifestPath));
 // 1. manifest -> RDF
 const doc = parseYaml(await readFile(manifestPath, "utf8"));
 const jsonLd = toJsonLd(doc);
-const nquads = (await jsonld.toRDF(jsonLd, { format: "application/n-quads" })) as string;
+const nquads = (await jsonld.toRDF(jsonLd, { format: "application/n-quads", documentLoader })) as string;
 const store = new Store();
-for (const quad of new Parser({ format: "N-Quads" }).parse(nquads)) store.addQuad(quad);
+// Remap blank-node graph names (jsonld turns @graph-without-@id steps into
+// blank-named graphs) to internal urn:uuid IRIs so the harness can address
+// every step graph from SPARQL/GRAPH and rule conclusions alike. Authored
+// graph names are kept as-is. A blank graph name is the same RDF resource
+// in graph position and as the rdf:first/rest list item, so every
+// occurrence of the label is replaced consistently.
+const quads = new Parser({ format: "N-Quads" }).parse(nquads);
+const blankGraphNames = new Map<string, string>();
+for (const quad of quads) {
+  if (quad.graph.termType === "BlankNode") blankGraphNames.set(quad.graph.value, `urn:uuid:${randomUUID()}`);
+}
+const remap = (term: any) =>
+  term.termType === "BlankNode" && blankGraphNames.has(term.value)
+    ? namedNode(blankGraphNames.get(term.value)!)
+    : term;
+for (const quad of quads) {
+  store.addQuad(remap(quad.subject), remap(quad.predicate), remap(quad.object), remap(quad.graph));
+}
+if (blankGraphNames.size > 0) {
+  console.log(`graph names: ${blankGraphNames.size} blank step graph(s) remapped to urn:uuid`);
+}
 
 // rules
 const rules = new Store(new Parser({ format: "text/n3" }).parse(await readFile(rulesPath, "utf8")));
@@ -230,24 +219,48 @@ const engine = new QueryEngine();
 
 // 2. seed inputs into the default graph (test-case context)
 const inputIris = new Set<string>();
-for (const q of store.getQuads(null, lwst.inputs, null, defaultGraph())) {
+for (const q of store.getQuads(null, lwst.terms.inputs, null, defaultGraph())) {
   if (q.object.termType === "NamedNode") inputIris.add(q.object.value);
 }
 if (inputIris.size === 0) {
   console.error("no inputs found in manifest (expected lwst:inputs with param terms)");
 }
 for (const iri of inputIris) {
-  store.addQuad(namedNode(iri), lwst.value, namedNode(storageUri), defaultGraph());
+  store.addQuad(namedNode(iri), lwst.terms.value, namedNode(storageUri), defaultGraph());
   console.log(`input  ${iri} = ${storageUri}`);
 }
 
 // helpers
 const one = (s: any, pred: any, graph?: any) =>
-  store.getQuads(s, pred, null, graph ?? null)[0]?.object;
+  pred ? store.getQuads(s, pred, null, graph ?? null)[0]?.object : undefined;
 const paramValue = (iri: string, graph?: any) =>
-  one(namedNode(iri), lwst.value, graph);
+  one(namedNode(iri), lwst.terms.value, graph);
 
-/** Materialize the constants referenced inside a step graph, from the context. */
+/** Walk an RDF list (rdf:first/rest) and return the list items in order. */
+function listItems(head: any): any[] {
+  const items = [];
+  while (head && !(head.termType === "NamedNode" && head.value === rdf.terms.nil.value)) {
+    items.push(one(head, rdf.terms.first, defaultGraph()));
+    head = one(head, rdf.terms.rest, defaultGraph());
+  }
+  return items;
+}
+
+/**
+ * The graph name of each step in document/list order: an authored IRI when
+ * the manifest named the step graph, otherwise the internal urn:uuid the
+ * harness minted for the blank-node name jsonld assigned (see the remap
+ * after the N-Quads parse).
+ */
+function stepGraphs(testNode: any): any[] {
+  return listItems(one(testNode, lwst.terms.steps, defaultGraph()));
+}
+
+/**
+ * Materialize the constants referenced inside a step graph, from the
+ * context: a cheap local copy of the param -> value triples the step's own
+ * rules need to join on (their premises cannot span graphs).
+ */
 function materializeConstants(stepGraph: any) {
   const needed = new Set<string>();
   for (const q of store.getQuads(null, null, null, stepGraph)) {
@@ -259,13 +272,11 @@ function materializeConstants(stepGraph: any) {
   for (const iri of needed) {
     const v = paramValue(iri, defaultGraph());
     if (v) {
-      store.addQuad(namedNode(iri), lwst.value, v, stepGraph);
+      store.addQuad(namedNode(iri), lwst.terms.value, v, stepGraph);
       copied++;
     }
   }
-  if (copied) {
-    console.log(`  materialized ${copied} constant(s) into ${stepGraph.value}`);
-  }
+  if (copied) console.log(`  materialized ${copied} constant(s)`);
 }
 
 /** Scoreboard. */
@@ -275,40 +286,72 @@ function check(label: string, ok: boolean, detail: string) {
   console.log(`  ${ok ? "PASS" : "FAIL"} ${label}${detail ? ` — ${detail}` : ""}`);
 }
 
-/** Evaluate one assertion; expects {type, received, expected?, validate?, ...}. */
-async function assertStep(a: any, stepGraph: any, context: "step" | "test") {
-  const type = a.type ?? "(unknown)";
-  const received = a.received;
+/**
+ * Evaluate one assertion node read from the RDF dataset. All the terms are
+ * already IRIs (the manifest's scoped contexts / @id coercions), so no
+ * compact-IRI expansion happens here.
+ */
+async function assertStep(a: any, scopeGraph: any) {
+  const typeTerm = one(a, rdf.terms.type, scopeGraph);
+  const type = typeTerm ? short(typeTerm.value) : "(unknown)";
+  const received = one(a, lwst.terms.received, scopeGraph);
   if (!received) {
     report.skipped++;
     console.log(`  SKIP ${type} — no received param`);
     return;
   }
-  const receivedIri = expand(String(received));
-  const value = context === "step"
-    ? (paramValue(receivedIri, stepGraph) ?? paramValue(receivedIri, defaultGraph()))
-    : paramValue(receivedIri, defaultGraph());
-  const got = value
-    ? value.termType === "NamedNode" ? value.value
-      : value.termType === "Literal" ? value.value : value.id
-    : undefined;
-
-  if (type === "ExistanceAssertion") {
-    check(`ExistanceAssertion ${received}`, got !== undefined, got ?? "not bound");
-    return;
-  }
-  if (type !== "IdentityAssertion") {
+  if (received.termType !== "NamedNode") {
     report.skipped++;
-    console.log(`  SKIP ${type} (unsupported)`);
+    console.log(`  SKIP ${type} — received is not an IRI: ${received.value}`);
     return;
   }
-  const expected = expand(String(a.expected ?? ""));
-  check(`IdentityAssertion ${received} == ${a.expected}`, got === expected, `received=${got ?? "∅"}`);
+  const value = paramValue(received.value, scopeGraph) ?? paramValue(received.value, defaultGraph());
+  let got: string | undefined;
+  switch (value?.termType) {
+    case "NamedNode":
+    case "Literal":
+      got = value.value;
+      break;
+    case undefined:
+      break; // unbound: leave got undefined, assertions fail below
+    default:
+      report.skipped++;
+      console.log(`  SKIP ${type} — unsupported received term type ${value.termType}`);
+      return;
+  }
+
+  const rLabel = short(received.value);
+  switch (type) {
+    case "ExistanceAssertion":
+      check(`ExistanceAssertion ${rLabel}`, got !== undefined, got ?? "not bound");
+      return;
+    case "IdentityAssertion": {
+      const expected = one(a, lwst.terms.expected, scopeGraph);
+      const expectedValue = expected && (expected.termType === "NamedNode" || expected.termType === "Literal")
+        ? expected.value
+        : undefined;
+      check(
+        `IdentityAssertion ${rLabel} == ${expected ? short(expected.value) : "∅"}`,
+        got === expectedValue,
+        `received=${got ?? "∅"}`,
+      );
+      return;
+    }
+    default:
+      report.skipped++;
+      console.log(`  SKIP ${type} (unsupported)`);
+      return;
+  }
 }
 
-/** Lift the test's declared constants from a step graph into the context. */
-async function liftConstants(constants: string[], stepGraph: any) {
-  const iris = constants.map((c) => namedNode(expand(String(c))));
+/**
+ * Lift the test's declared constants into the context (default graph): a
+ * SPARQL CONSTRUCT that picks ?p lwst:value ?v from the step's graph (its
+ * name is an IRI -- authored or the internal urn:uuid -- so it can be
+ * named in the GRAPH clause) and emits the triple into the default graph.
+ */
+async function liftConstants(constants: any[], stepGraph: any) {
+  const iris = constants.filter((t) => t.termType === "NamedNode");
   if (iris.length === 0) return;
   const values = `VALUES ?p { ${iris.map((i) => `<${i.value}>`).join(" ")} }`;
   const quads = await engine.queryQuads(
@@ -318,28 +361,45 @@ async function liftConstants(constants: string[], stepGraph: any) {
   );
   let lifted = 0;
   for await (const q of quads) {
-    store.addQuad(q.subject, q.predicate, q.object, defaultGraph());
-    lifted++;
+    if (store.getQuads(q.subject, q.predicate, q.object, defaultGraph()).length === 0) {
+      store.addQuad(q.subject, q.predicate, q.object, defaultGraph());
+      lifted++;
+    }
   }
   if (lifted) console.log(`  lifted ${lifted} constant(s) to context`);
 }
 
 // 3. run the tests
+// Test nodes in the default graph, paired with the JSON-LD tests (same
+// document order); each test's step graphs come from its rdf:first/rest
+// list, in order, with the blank-node names jsonld assigned.
+const testNodes = store.getQuads(null, rdf.terms.type, namedNode(LWST + "TestCase"), defaultGraph())
+  .map((q) => q.subject);
 let failedSteps = 0;
 for (let ti = 0; ti < jsonLd.tests.length; ti++) {
   const test = jsonLd.tests[ti];
+  const testNode = testNodes[ti];
   console.log(`\n# ${test.name ?? test.id ?? `test-${ti}`} (${test.id ?? ""})`);
-  const constants: string[] = (test.constants ?? []).map(String);
+  // declared constants, straight from the RDF (already IRIs)
+  const constants = testNode
+    ? store.getQuads(testNode, lwst.terms.constants, null, defaultGraph()).map((q) => q.object)
+    : [];
+  const graphs = testNodes[ti] ? stepGraphs(testNodes[ti]) : [];
 
   for (let si = 0; si < (test.steps ?? []).length; si++) {
     const step = test.steps[si];
-    const stepGraph = namedNode(step["@id"]);
+    const stepGraph = graphs[si];
     const ops = Array.isArray(step["@graph"][0]?.operation)
       ? step["@graph"][0].operation
       : [step["@graph"][0]?.operation].filter(Boolean);
     if (ops.length === 0) { console.error(`  NO OPERATION in step ${si}`); failedSteps++; continue; }
 
-    console.log(`\nstep ${si + 1} <${stepGraph.value}>`);
+    if (!stepGraph) {
+      console.error(`  NO GRAPH for step ${si + 1}`);
+      failedSteps++;
+      continue;
+    }
+    console.log(`\nstep ${si + 1}`);
     materializeConstants(stepGraph);
     reason();
 
@@ -349,17 +409,17 @@ for (let ti = 0; ti < jsonLd.tests.length; ti++) {
       console.log(`  execute ${op.type} ${String(op.target ?? "")}`);
       // find the operation node's derived request: any op typed by the rules
       let found = false;
-      for (const q of store.getQuads(null, RDF.type, pv(HTTP, "Request"), stepGraph)) {
-        const method = one(q.subject, pv(HTTP, "mthd"), null);
-        const uri = one(q.subject, pv(HTTP, "absoluteURI"), null);
+      for (const q of store.getQuads(null, rdf.terms.type, http.terms.Request, stepGraph)) {
+        const method = one(q.subject, http.terms.mthd, null);
+        const uri = one(q.subject, http.terms.absoluteURI, null);
         if (!method || !uri) continue;
         found = true;
         // headers derived by the rules (Accept, Link, ...)
         const headers: Record<string, string> = {};
-        for (const hq of store.getQuads(q.subject, pv(HTTP, "headers"), null, stepGraph)) {
+        for (const hq of store.getQuads(q.subject, http.terms.headers, null, stepGraph)) {
           const h = hq.object;
-          const name = one(h, pv(HTTP, "fieldName"), stepGraph);
-          const value = one(h, pv(HTTP, "fieldValue"), stepGraph);
+          const name = one(h, http.terms.fieldName, stepGraph);
+          const value = one(h, http.terms.fieldValue, stepGraph);
           if (name && value) headers[name.value] = value.value;
         }
         const methodName = method.value.slice(Math.max(method.value.lastIndexOf("#"), method.value.lastIndexOf("/")) + 1);
@@ -378,21 +438,21 @@ for (let ti = 0; ti < jsonLd.tests.length; ti++) {
         const contentType = res.headers.get("content-type") ?? "";
 
         // --- inject the response as HTTP-in-RDF into the step graph ---
-        const resp = namedNode(`${stepGraph.value}/response`);
-        store.addQuad(resp, RDF.type, pv(HTTP, "Response"), stepGraph);
+        const resp = blankNode();
+        store.addQuad(resp, rdf.terms.type, http.terms.Response, stepGraph);
         const scIri = await lookupStatusIri(res.status);
         if (scIri) {
-          store.addQuad(resp, pv(HTTP, "sc"), namedNode(scIri), stepGraph);
+          store.addQuad(resp, http.terms.sc, namedNode(scIri), stepGraph);
         } else {
           console.log(`  (no http:sc for status ${res.status}; vocabulary lookup failed)`);
         }
         const location = res.headers.get("location");
         if (location) {
           const h = blankNode();
-          store.addQuad(resp, pv(HTTP, "headers"), h, stepGraph);
-          store.addQuad(h, RDF.type, pv(HTTP, "ResponseHeader"), stepGraph);
-          store.addQuad(h, pv(HTTP, "fieldName"), literal("Location"), stepGraph);
-          store.addQuad(h, pv(HTTP, "fieldValue"), literal(new URL(location, storageUri).href), stepGraph);
+          store.addQuad(resp, http.terms.headers, h, stepGraph);
+          store.addQuad(h, rdf.terms.type, http.terms.ResponseHeader, stepGraph);
+          store.addQuad(h, http.terms.fieldName, literal("Location"), stepGraph);
+          store.addQuad(h, http.terms.fieldValue, literal(new URL(location, storageUri).href), stepGraph);
         }
         if (isRdfContentType(contentType)) {
           try {
@@ -400,29 +460,31 @@ for (let ti = 0; ti < jsonLd.tests.length; ti++) {
             let b: any = null;
             for (const q of bodyQuads) store.addQuad(q.subject, q.predicate, q.object, stepGraph);
             b = blankNode();
-            store.addQuad(resp, pv(HTTP, "body"), b, stepGraph);
-            store.addQuad(b, RDF.type, pv(CNT, "ContentAsRDF"), stepGraph);
+            store.addQuad(resp, http.terms.body, b, stepGraph);
+            store.addQuad(b, rdf.terms.type, cnt.terms.ContentAsRDF, stepGraph);
             console.log(`  response ${res.status} (${contentType}) — ${bodyQuads.length} body triple(s) into step graph`);
           } catch (e: any) {
             console.log(`  response ${res.status} — could not parse RDF body: ${e.message}`);
           }
         } else {
           const b = blankNode();
-          store.addQuad(resp, pv(HTTP, "body"), b, stepGraph);
-          store.addQuad(b, RDF.type, pv(CNT, "ContentAsText"), stepGraph);
-          store.addQuad(b, pv(CNT, "chars"), literal(bodyText), stepGraph);
+          store.addQuad(resp, http.terms.body, b, stepGraph);
+          store.addQuad(b, rdf.terms.type, cnt.terms.ContentAsText, stepGraph);
+          store.addQuad(b, cnt.terms.chars, literal(bodyText), stepGraph);
           console.log(`  response ${res.status} (${contentType || "no type"})`);
         }
 
         reason(); // derive param:status-code, param:location, storage-root, bindings...
 
-        // bindings: id -> return were derived by the rules (lwst:value on return param)
-        for (const binding of step["@graph"][0]?.bindings ?? []) {
-          if (typeof binding === "string") continue;
-          const id = expand(String(binding.id ?? ""));
-          const ret = String(binding.return ?? "");
-          const v = paramValue(id, stepGraph);
-          if (v) console.log(`  bound ${ret} <- ${id} = ${v.value}`);
+        // bindings: id -> return were derived by the rules (lwst:value on
+        // the return param); report the ones that got a value
+        for (const bq of store.getQuads(null, lwst.terms.bindings, null, stepGraph)) {
+          const b = bq.object;
+          const id = one(b, lwst.terms.id, stepGraph);
+          const ret = one(b, lwst.terms.return, stepGraph);
+          if (!id || !ret) continue; // shorthand bindings have no id/return
+          const v = paramValue(id.value, stepGraph);
+          if (v) console.log(`  bound ${short(ret.value)} <- ${short(id.value)} = ${v.value}`);
         }
       }
       if (!found) {
@@ -431,20 +493,25 @@ for (let ti = 0; ti < jsonLd.tests.length; ti++) {
       }
     }
 
-    // assertions on this step
-    for (const a of step["@graph"][0]?.assertions ?? []) {
-      await assertStep(a, stepGraph, "step");
-    }
+    // assertions on this step (any node typed *Assertion in the step graph)
+    const assertionNodes = [...new Set(
+      [...store.getQuads(null, rdf.terms.type, null, stepGraph)]
+        .filter((q) => q.object.termType === "NamedNode" && /Assertion$/.test(q.object.value))
+        .map((q) => q.subject),
+    )];
+    for (const a of assertionNodes) await assertStep(a, stepGraph);
     if (!stepOk) failedSteps++;
 
     // lift this test's declared constants into the context (default graph)
     await liftConstants(constants, stepGraph);
   }
 
-  // test-level assertions, resolved against the context
+  // test-level assertions, resolved against the context (default graph)
   console.log(`\n[test-level assertions]`);
-  for (const a of test.assertions ?? []) {
-    await assertStep(a, null, "test");
+  if (testNode) {
+    for (const a of store.getQuads(testNode, lwst.terms.assertions, null, defaultGraph()).map((q) => q.object)) {
+      await assertStep(a, defaultGraph());
+    }
   }
 }
 

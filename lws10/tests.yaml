@@ -16,32 +16,7 @@
 # relative reference against a parameter. Extractors bind parameters
 # from the actual response: `path` is a JSONPath into the body, `header`
 # names a response header.
-"@context":
-  "@vocab": https://www.w3.org/ns/lws-tests/v1#
-  http: http://www.w3.org/2011/http#
-  mf: https://www.w3.org/ns/test-manifest#
-  rdfs: http://www.w3.org/2000/01/rdf-schema#
-  xsd: http://www.w3.org/2001/XMLSchema#
-  type:
-    "@id": "@type"
-    "@type": "@id"
-  name:
-    "@id": mf:name
-  comment:
-    "@id": rdfs:comment
-  lwst: https://w3id.org/lws/test/
-  case: lwst:case/
-  param: lwst:param#
-  shape: lwst:shape/
-  tests:
-    "@container": "@list"
-  steps:
-    "@container": "@list"
-  extractors:
-    "@container": "@list"
-  statusCodeValue:
-    "@id": http:statusCodeValue
-    "@type": xsd:integer
+"@context": https://w3id.org/lws/test/context
 name: LWS Test Suite
 rules: rules.n3
 tests:

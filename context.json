@@ -1,0 +1,98 @@
+{
+  "@vocab": "https://www.w3.org/ns/lws-tests/v1#",
+  "lwst": "https://w3id.org/lws/test/",
+  "case": "lwst:case/",
+  "param": "lwst:param#",
+  "shape": "lwst:shape/",
+  "http": "http://www.w3.org/2011/http#",
+  "http-status": "http://www.w3.org/2011/http-statusCodes#",
+  "mf": "https://www.w3.org/ns/test-manifest#",
+  "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+  "xsd": "http://www.w3.org/2001/XMLSchema#",
+  "type": {
+    "@id": "@type",
+    "@type": "@id"
+  },
+  "name": {
+    "@id": "mf:name"
+  },
+  "comment": {
+    "@id": "rdfs:comment"
+  },
+  "tests": {
+    "@container": "@list"
+  },
+  "steps": {
+    "@container": "@list"
+  },
+  "extractors": {
+    "@container": "@list"
+  },
+  "statusCodeValue": {
+    "@id": "http:statusCodeValue",
+    "@type": "xsd:integer"
+  },
+  "IdentityAssertion": {
+    "@context": {
+      "received": {
+        "@type": "@id"
+      },
+      "expected": {
+        "@type": "@id"
+      }
+    }
+  },
+  "ExistanceAssertion": {
+    "@context": {
+      "received": {
+        "@type": "@id"
+      }
+    }
+  },
+  "ShapeAssertion": {
+    "@context": {
+      "received": {
+        "@type": "@id"
+      },
+      "validate": {
+        "@type": "@id"
+      }
+    }
+  },
+  "inputs": {
+    "@id": "https://www.w3.org/ns/lws-tests/v1#inputs",
+    "@type": "@id"
+  },
+  "constants": {
+    "@id": "https://www.w3.org/ns/lws-tests/v1#constants",
+    "@type": "@id"
+  },
+  "target": {
+    "@id": "https://www.w3.org/ns/lws-tests/v1#target",
+    "@type": "@id"
+  },
+  "received": {
+    "@id": "https://www.w3.org/ns/lws-tests/v1#received",
+    "@type": "@id"
+  },
+  "expected": {
+    "@id": "https://www.w3.org/ns/lws-tests/v1#expected",
+    "@type": "@id"
+  },
+  "validate": {
+    "@id": "https://www.w3.org/ns/lws-tests/v1#validate",
+    "@type": "@id"
+  },
+  "id": {
+    "@id": "https://www.w3.org/ns/lws-tests/v1#id",
+    "@type": "@id"
+  },
+  "return": {
+    "@id": "https://www.w3.org/ns/lws-tests/v1#return",
+    "@type": "@id"
+  },
+  "bindings": {
+    "@id": "https://www.w3.org/ns/lws-tests/v1#bindings",
+    "@type": "@id"
+  }
+}
