@@ -13,7 +13,9 @@
  * vocabulary.context.jsonld as ./lws-v1.context.json, which the suite's
  * documentLoader serves under https://www.w3.org/ns/lws/v1.
  *
- * Usage: bun scripts/generate-lws-v1-context.ts
+ * Usage: bun scripts/generate-lws-v1-context.ts [--local <vocab-dir>]
+ *   --local <vocab-dir>  use vocabulary.yml + template.html from a local
+ *                        checkout instead of the raw GitHub sources.
  */
 import { $ } from "bun";
 import { cp, mkdir, readFile, writeFile } from "node:fs/promises";
@@ -24,14 +26,22 @@ const RAW_BASE = "https://raw.githubusercontent.com/w3c/lws-protocol/refs/heads/
 const SOURCES = ["vocabulary.yml", "template.html"];
 const OUT = "lws-v1.context.json";
 
+const localIdx = process.argv.indexOf("--local");
+const LOCAL = localIdx >= 0 ? process.argv[localIdx + 1] : undefined;
+
 const work = join(tmpdir(), `lws-vocab-${Date.now()}`);
 await mkdir(work, { recursive: true });
 
 for (const file of SOURCES) {
-  const res = await fetch(`${RAW_BASE}/${file}`);
-  if (!res.ok) throw new Error(`cannot fetch ${RAW_BASE}/${file}: HTTP ${res.status}`);
-  await writeFile(join(work, file), await res.text());
-  console.log(`fetched ${file}`);
+  if (LOCAL) {
+    await cp(join(LOCAL, file), join(work, file));
+    console.log(`copied ${file} from ${LOCAL}`);
+  } else {
+    const res = await fetch(`${RAW_BASE}/${file}`);
+    if (!res.ok) throw new Error(`cannot fetch ${RAW_BASE}/${file}: HTTP ${res.status}`);
+    await writeFile(join(work, file), await res.text());
+    console.log(`fetched ${file}`);
+  }
 }
 
 // canonical generator (see the vocab README: npx yml2vocab -v vocabulary -t template.html -c)
