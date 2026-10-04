@@ -1,0 +1,62 @@
+# LWS 1.0 storage description resource -- minimal ShExC shape.
+#
+# RDF counterpart of schema/json/storage-description.json, derived from the
+# LWS 1.0 core specification (lws10-core/Discovery.html, § storage
+# description data model / representation). Published under
+# https://w3id.org/lws/test/shape/storage-description; the harness serves
+# this local copy under that IRI (see context.ts).
+#
+# Data model mapped to RDF:
+#   JSON                       RDF
+#   id (REQUIRED, URI)         the focus node is an IRI (<storage-description> IRI)
+#   type === Storage           a lws:Storage (canonical single-type form)
+#   service (REQUIRED)         did:service, one triple per service
+#     type === StorageRoot     a lws:StorageRoot for the mandatory root service
+#     serviceEndpoint (REQ)    did:serviceEndpoint IRI
+#   capability (OPTIONAL)      lws:capability, one triple per capability
+#     type (REQUIRED)          a <type>
+#
+#   Service and capability types are required in RDF too. The suite's served
+#   LWS context post-patches missing service terms once they are not yet in
+#   the upstream vocabulary (TypeIndexService, TypeSearchService; see
+#   scripts/generate-lws-v1-context.ts), so those types survive JSON-LD
+#   expansion. A type the patched vocab still does not know is dropped in
+#   conversion, and only the JSON schema can check it.
+#
+# Notes on expressiveness (documented gaps vs the JSON schema):
+#   - "type equals X or a set containing X": ShEx value sets have subset
+#     semantics, so a set like ["Storage", ...] fails; these shapes match
+#     the canonical single-type form the spec examples and current
+#     implementations emit.
+#   - service/capability "id" (a URI if present) has no RDF triple -- the
+#     id IS the node -- so it is not checked; a service or capability with
+#     an id is simply an IRI node instead of a blank node.
+#   - required-at-least-one StorageRoot service is expressed as exactly one
+#     did:service @<StorageRootService> plus any number of @<Service> --
+#     shex.js consumes one service as the base StorageRoot service and the
+#     rest as generic services (order-insensitive).
+PREFIX lws: <https://www.w3.org/ns/lws#>
+PREFIX did: <https://www.w3.org/ns/did#>
+
+start = @<storage-description>
+
+<storage-description> IRI {
+  a [ lws:Storage ] ;
+  did:service @<StorageRootService> ;
+  did:service @<Service>* ;
+  lws:capability @<Capability>* ;
+}
+
+<StorageRootService> {
+  a [ lws:StorageRoot ] ;
+  did:serviceEndpoint IRI ;
+}
+
+<Service> {
+  a .+ ;
+  did:serviceEndpoint IRI ;
+}
+
+<Capability> {
+  a .+ ;
+}

@@ -60,6 +60,31 @@ if (context["@context"] && "expires" in context["@context"]) {
   console.log("removed the `expires` term (CID key-context collision)");
 }
 
+// Terms the upstream vocab (lws10-vocab/vocabulary.yml) does not declare
+// yet, but which servers emit in storage descriptions; the ShEx shape
+// (shape/storage-description.shex) requires each service to carry a type,
+// and a JSON type that is not a context term is dropped by JSON-LD
+// expansion. Post-patch them into the local copy until upstream adds them:
+// if a term is now present in the generated context, the warning below says
+// to remove it from this list.
+const MISSING_TERMS: Record<string, string> = {
+  TypeIndexService: "https://www.w3.org/ns/lws#TypeIndexService",
+  TypeSearchService: "https://www.w3.org/ns/lws#TypeSearchService",
+};
+
+if (context["@context"]) {
+  for (const [term, iri] of Object.entries(MISSING_TERMS)) {
+    if (term in context["@context"]) {
+      console.warn(
+        `term \`${term}\` is now declared by the upstream vocabulary; remove it from MISSING_TERMS in scripts/generate-lws-v1-context.ts`,
+      );
+    } else {
+      context["@context"][term] = iri;
+      console.log(`patched missing term \`${term}\` -> ${iri} into the generated context`);
+    }
+  }
+}
+
 const out = JSON.stringify(context, null, 4) + "\n";
 await writeFile(OUT, out);
 console.log(`wrote ${OUT} (${out.length} bytes, from ${RAW_BASE}/vocabulary.yml)`);

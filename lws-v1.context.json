@@ -131,13 +131,11 @@
             "@id": "http://www.w3.org/ns/ldp#inbox",
             "@type": "http://www.w3.org/2001/XMLSchema#anyURI"
         },
-        "valid": {
-            "@id": "http://purl.org/dc/terms/valid",
-            "@type": "http://www.w3.org/2001/XMLSchema#dateTime"
-        },
         "access": "https://www.w3.org/ns/lws#access",
         "conformsTo": "http://purl.org/dc/terms/conformsTo",
         "create": "https://www.w3.org/ns/lws#create",
-        "client": "https://www.w3.org/ns/lws#client"
+        "client": "https://www.w3.org/ns/lws#client",
+        "TypeIndexService": "https://www.w3.org/ns/lws#TypeIndexService",
+        "TypeSearchService": "https://www.w3.org/ns/lws#TypeSearchService"
     }
 }

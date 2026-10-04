@@ -23,8 +23,10 @@
  *        f. evaluate the step assertions; log PASS/FAIL; skip unsupported
  *           assertion types (e.g. ShapeAssertion). JSON Schema assertions
  *           (ValidateJsonSchemaAssertion) validate the raw body text against
- *           the schema at the jsonSchema IRI, resolved from the local copy
- *           served under its published IRI by documentLoader().
+ *           the schema at the jsonSchema IRI; ShEx assertions
+ *           (ValidateShapeAssertion) validate the parsed RDF body against
+ *           the shape at the with IRI. Both documents resolve from the
+ *           local copies served under their published IRIs by documentLoader().
  *        g. lift the test's declared constants from the step graph into the
  *           default graph (test-case context) via a SPARQL CONSTRUCT.
  *   4. evaluate test-level assertions against the context; print a summary;
@@ -44,6 +46,7 @@ import { parse as parseYaml } from "yaml";
 import jsonld from "jsonld";
 import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
+import ShEx from "shex";
 import { LWS_TEST_CONTEXT, documentLoader } from "./context";
 
 const { namedNode, blankNode, literal, defaultGraph } = DataFactory;
@@ -75,7 +78,7 @@ const lwst = createVocabulary(
   "https://www.w3.org/ns/lws-tests/v1#",
   "value", "operation", "target", "inputs", "constants", "bindings",
   "assertions", "steps", "received", "expected", "id", "return",
-  "jsonString", "jsonPath", "jsonSchema",
+  "jsonString", "jsonPath", "jsonSchema", "validate", "with",
 );
 
 // namespaces with dynamic local names (status names come from the cached
@@ -95,6 +98,22 @@ const PARAM = "https://w3id.org/lws/test/param#";
 const ajv = new Ajv2020({ allErrors: true, strictTuples: false });
 addFormats(ajv);
 const validatorCache = new Map<string, any>();
+
+// ShEx validation for ValidateShapeAssertion. Schemas (ShExC text) are
+// parsed once per shape IRI; the shape documents resolve through
+// documentLoader(), which serves the local copies under their published
+// https://w3id.org/lws/test/shape/ IRIs. The base is the shape namespace
+// so relative shape labels resolve the same way the manifest references
+// them (lwst:shape/...).
+const shapeCache = new Map<string, any>();
+const SHAPE_BASE = "https://w3id.org/lws/test/shape/";
+
+// Parsed RDF response bodies, keyed by the content node (cnt:ContentAsRDF)
+// they were injected under (see the response injection below). The rules
+// bind param:content to that content node, so a ValidateShapeAssertion can
+// pick up the body graph without re-parsing or guessing which step-graph
+// triples came from the response body.
+const bodyGraphs = new Map<string, any[]>();
 
 
 // ---------------------------------------------------------------------------
@@ -332,6 +351,61 @@ async function assertStep(a: any, scopeGraph: any) {
     console.log(`  SKIP ${type} — received is not an IRI: ${received.value}`);
     return;
   }
+
+  const rLabel = received ? short(received.value) : "?";
+
+  // Shape validation operates on the received *content* (param:content is
+  // the cnt:ContentAsRDF body node, a blank node), not on a literal or IRI
+  // value, so it is handled before the generic received-value extraction
+  // below (which skips blank nodes).
+  if (type === "ValidateShapeAssertion") {
+    const withIri = one(a, lwst.terms.with, scopeGraph);
+    const shapeIri = withIri?.termType === "NamedNode" ? withIri.value : undefined;
+    const label = `ValidateShapeAssertion ${rLabel} vs ${short(shapeIri ?? "?")}`;
+    if (!shapeIri) {
+      check(label, false, "with not an IRI");
+      return;
+    }
+    const contentNode = received ? (paramValue(received.value, scopeGraph) ?? paramValue(received.value, defaultGraph())) : undefined;
+    const quads = contentNode ? bodyGraphs.get(contentNode.value) : undefined;
+    if (!quads || quads.length === 0) {
+      check(label, false, "no parsed RDF body for the received content");
+      return;
+    }
+    try {
+      const { document: shapeText } = await documentLoader(shapeIri, {});
+      let schema = shapeCache.get(shapeIri);
+      if (!schema) {
+        schema = ShEx.Parser.construct(SHAPE_BASE, {}).parse(shapeText);
+        shapeCache.set(shapeIri, schema);
+      }
+      // The body graph may contain more than one subject (the storage node
+      // plus service/capability terms). The shape describes the body's
+      // resource, so the body conforms when at least one subject does --
+      // the RDF counterpart of "the document validates against the schema".
+      const data = new Store(quads);
+      const validator = new ShEx.Validator.ShExValidator(schema, ShEx.RdfJsDb(data));
+      const subjects = [...new Set(quads.map((q: any) => q.subject))];
+      let conformant = false;
+      let firstErrors = "";
+      for (const focus of subjects) {
+        const res = validator.validateNodeShapePair(focus, ShEx.Validator.ShExValidator.Start);
+        if (!("errors" in res)) { conformant = true; break; }
+        if (!firstErrors) firstErrors = JSON.stringify((res as any).errors ?? []).slice(0, 200);
+      }
+      check(
+        label,
+        conformant,
+        conformant
+          ? `${subjects.length} subject(s), shape conformant`
+          : `${subjects.length} subject(s), none conformant — ${firstErrors}`,
+      );
+    } catch (e: any) {
+      check(label, false, `error: ${e.message}`);
+    }
+    return;
+  }
+
   const value = received
     ? (paramValue(received.value, scopeGraph) ?? paramValue(received.value, defaultGraph()))
     : undefined;
@@ -349,7 +423,6 @@ async function assertStep(a: any, scopeGraph: any) {
       return;
   }
 
-  const rLabel = received ? short(received.value) : "?";
   switch (type) {
     case "ExistanceAssertion":
       check(`ExistanceAssertion ${rLabel}`, got !== undefined, got ?? "not bound");
@@ -560,6 +633,7 @@ for (let ti = 0; ti < jsonLd.tests.length; ti++) {
             let b: any = null;
             for (const q of bodyQuads) store.addQuad(q.subject, q.predicate, q.object, stepGraph);
             b = blankNode();
+            bodyGraphs.set(b.value, bodyQuads);
             store.addQuad(resp, http.terms.body, b, stepGraph);
             store.addQuad(b, rdf.terms.type, cnt.terms.ContentAsRDF, stepGraph);
             store.addQuad(b, cnt.terms.chars, literal(bodyText), stepGraph); // raw text for param:text

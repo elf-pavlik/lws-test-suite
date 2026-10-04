@@ -23,6 +23,11 @@
 # local copy of each schema under its published IRI (see context.ts), so
 # manifests reference the published IRI while the repo holds the source
 # (schema/json/*.json).
+#
+# ValidateShapeAssertion validates the received content (param:content, the
+# parsed RDF response body) with a ShEx shape (with, an IRI under
+# https://w3id.org/lws/test/shape/). Shapes are likewise served from local
+# copies (shape/*.shex) under their published IRIs.
 "@context": https://w3id.org/lws/test/context
 name: LWS Test Suite
 rules: rules.n3
@@ -57,7 +62,7 @@ tests:
               jsonPath: $.service[?(@.type == 'StorageRoot')].serviceEndpoint
             - type: ValidateShapeAssertion
               received: param:content
-              validate: shape:DescriptionResource
+              with: shape:storage-description
             - type: ValidateJsonSchemaAssertion
               jsonString: param:text
               jsonSchema: schema:storage-description
@@ -140,7 +145,7 @@ tests:
               jsonPath: $.service[?(@.type == 'StorageRoot')].serviceEndpoint
             - type: ValidateShapeAssertion
               received: param:content
-              validate: shape:storage-description
+              with: shape:storage-description
             - type: ValidateJsonSchemaAssertion
               jsonString: param:text
               jsonSchema: schema:storage-description

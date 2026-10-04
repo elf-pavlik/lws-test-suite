@@ -60,6 +60,16 @@
       }
     }
   },
+  "ValidateShapeAssertion": {
+    "@context": {
+      "received": {
+        "@type": "@id"
+      },
+      "with": {
+        "@type": "@id"
+      }
+    }
+  },
   "MatchJsonPathAssertion": {
     "@context": {
       "jsonString": {
