@@ -102,9 +102,12 @@ For each test case, for each step, in order:
 6. **Assert** — evaluation happens on RDF assertion nodes (any `*Assertion`
    typed node in the step graph, or the default graph for test-level
    assertions): `IdentityAssertion` compares the `received` param's bound value
-   against `expected`; `ExistanceAssertion` checks the param is bound; unknown
-   types (`ShapeAssertion`, …) are skipped. Values that are not NamedNode /
-   Literal are skipped.
+   against `expected`; `ExistanceAssertion` checks the param is bound;
+   `MatchJsonPathAssertion` runs a JSONPath into the raw body text
+   (`jsonString`); `ValidateJsonSchemaAssertion` validates the raw body text
+   against the JSON Schema at the `jsonSchema` IRI (resolved through
+   `documentLoader`, see below). Unsupported types (`ShapeAssertion`, …) are
+   skipped. Values that are not NamedNode / Literal are skipped.
 7. **Lift** — a SPARQL CONSTRUCT picks the test's declared `constants` values
    from the step graph and **merges** them into the default graph. This is the
    propagation mechanism: the next step's *materialize* pulls from the growing
@@ -130,15 +133,21 @@ shared run state across steps.
 |---|---|---|
 | `context.json` | `https://w3id.org/lws/test/context` | authored by hand; the suite's canonical context |
 | `lws-v1.context.json` | `https://www.w3.org/ns/lws/v1` | generated (`bun run context:lws-v1`) from `w3c/lws-protocol` `lws10-vocab` via `yml2vocab` |
+| `schema/json/storage-description.json` | `https://w3id.org/lws/test/schema/json/storage-description` | minimal JSON Schema derived from `lws10-core/Discovery.html` § storage description data model |
 | `lws10/http-statusCodes.ttl` | (lookup store, not served) | cached conversion of the W3C RDF/XML status-codes vocabulary |
 
-`documentLoader()` (`context.ts`) serves the two contexts locally and
-fetches/caches any remote context document, so conversion never depends on
-the unpublished `lws/v1` or on repeated network calls. The context includes
-`@id` coercions for every reference-bearing term (`inputs`, `constants`,
-`target`, `received`, `expected`, `validate`, `id`, `return`, `bindings`) and
-type-scoped contexts for the assertion types so `expected: http-status:OK`
-becomes a real status-code IRI in RDF.
+`documentLoader()` (`context.ts`) serves the contexts and JSON schemas
+locally (the local `schema/json/*.json` copies under their published
+`https://w3id.org/lws/test/schema/json/…` IRIs) and fetches/caches any
+remote document, so conversion never depends on the unpublished `lws/v1`,
+repeated network calls, or the schema publication landing before the tests
+run. The context includes `@id` coercions for every reference-bearing term
+(`inputs`, `constants`, `target`, `received`, `expected`, `validate`, `id`,
+`return`, `bindings`, `jsonSchema`) and type-scoped contexts for the
+assertion types so `expected: http-status:OK` becomes a real status-code
+IRI in RDF and `jsonSchema: schema:storage-description` stays an IRI in the
+`https://w3id.org/lws/test/schema/json/` namespace (`jsonSchema` is the
+manifest property, `schema` the prefix).
 
 ## Report
 

@@ -16,6 +16,13 @@
 # relative reference against a parameter. Extractors bind parameters
 # from the actual response: `path` is a JSONPath into the body, `header`
 # names a response header.
+#
+# ValidateJsonSchemaAssertion validates the raw response body (jsonString,
+# a param bound from the body text) against a JSON Schema (jsonSchema, an
+# IRI under https://w3id.org/lws/test/schema/json/). The harness serves the
+# local copy of each schema under its published IRI (see context.ts), so
+# manifests reference the published IRI while the repo holds the source
+# (schema/json/*.json).
 "@context": https://w3id.org/lws/test/context
 name: LWS Test Suite
 rules: rules.n3
@@ -48,9 +55,12 @@ tests:
               jsonString: param:text
               expected: param:storage-root
               jsonPath: $.service[?(@.type == 'StorageRoot')].serviceEndpoint
-            - type: ShapeAssertion
+            - type: ValidateShapeAssertion
               received: param:content
               validate: shape:DescriptionResource
+            - type: ValidateJsonSchemaAssertion
+              jsonString: param:text
+              jsonSchema: schema:storage-description
 
         - "@graph":
           operation:
@@ -128,9 +138,12 @@ tests:
               jsonString: param:text
               expected: param:storage-root
               jsonPath: $.service[?(@.type == 'StorageRoot')].serviceEndpoint
-            - type: ShapeAssertion
+            - type: ValidateShapeAssertion
               received: param:content
-              validate: shape:DescriptionResource
+              validate: shape:storage-description
+            - type: ValidateJsonSchemaAssertion
+              jsonString: param:text
+              jsonSchema: schema:storage-description
 
         - "@graph":
           operation:

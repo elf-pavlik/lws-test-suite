@@ -21,7 +21,10 @@
  *           param:content, the storage-root extraction (from RDF bodies) and
  *           the id->return binding copies are derived in the step graph.
  *        f. evaluate the step assertions; log PASS/FAIL; skip unsupported
- *           assertion types (e.g. ShapeAssertion).
+ *           assertion types (e.g. ShapeAssertion). JSON Schema assertions
+ *           (ValidateJsonSchemaAssertion) validate the raw body text against
+ *           the schema at the jsonSchema IRI, resolved from the local copy
+ *           served under its published IRI by documentLoader().
  *        g. lift the test's declared constants from the step graph into the
  *           default graph (test-case context) via a SPARQL CONSTRUCT.
  *   4. evaluate test-level assertions against the context; print a summary;
@@ -39,6 +42,8 @@ import { createVocabulary } from "rdf-vocabulary";
 import { JSONPath } from "jsonpath-plus";
 import { parse as parseYaml } from "yaml";
 import jsonld from "jsonld";
+import Ajv2020 from "ajv/dist/2020";
+import addFormats from "ajv-formats";
 import { LWS_TEST_CONTEXT, documentLoader } from "./context";
 
 const { namedNode, blankNode, literal, defaultGraph } = DataFactory;
@@ -70,7 +75,7 @@ const lwst = createVocabulary(
   "https://www.w3.org/ns/lws-tests/v1#",
   "value", "operation", "target", "inputs", "constants", "bindings",
   "assertions", "steps", "received", "expected", "id", "return",
-  "jsonString", "jsonPath",
+  "jsonString", "jsonPath", "jsonSchema",
 );
 
 // namespaces with dynamic local names (status names come from the cached
@@ -80,6 +85,16 @@ const LWST = lwst.namespace;
 const HTTP = http.namespace;
 const CNT = cnt.namespace;
 const PARAM = "https://w3id.org/lws/test/param#";
+
+// JSON Schema validation (draft 2020-12) for ValidateJsonSchemaAssertion.
+// Validators are compiled once per schema IRI; the schema documents resolve
+// through documentLoader(), which serves the local copies under their
+// published https://w3id.org/lws/test/schema/json/ IRIs.
+// strictTuples is off so an open-ended prefixItems tuple (e.g. the @context
+// array "starting with" two URIs, with uniform items after) stays clean.
+const ajv = new Ajv2020({ allErrors: true, strictTuples: false });
+addFormats(ajv);
+const validatorCache = new Map<string, any>();
 
 
 // ---------------------------------------------------------------------------
@@ -305,7 +320,9 @@ async function assertStep(a: any, scopeGraph: any) {
   // received is optional: assertions like MatchJsonPathAssertion use
   // jsonString/expected/jsonPath instead
   const received = one(a, lwst.terms.received, scopeGraph);
-  if (!received && type !== "MatchJsonPathAssertion") {
+  // assertions driven by jsonString (JSONPath / JSON Schema) carry no
+  // received param
+  if (!received && !["MatchJsonPathAssertion", "ValidateJsonSchemaAssertion"].includes(type)) {
     report.skipped++;
     console.log(`  SKIP ${type} — no received param`);
     return;
@@ -347,6 +364,42 @@ async function assertStep(a: any, scopeGraph: any) {
         got === expectedValue,
         `received=${got ?? "∅"}`,
       );
+      return;
+    }
+    case "ValidateJsonSchemaAssertion": {
+      // jsonString is a param holding the raw response body text; jsonSchema
+      // is the JSON Schema IRI (the harness serves the local copy under the
+      // published IRI via documentLoader)
+      const jsonString = one(a, lwst.terms.jsonString, scopeGraph);
+      const schema = one(a, lwst.terms.jsonSchema, scopeGraph);
+      const picked = (t: any) =>
+        t?.termType === "NamedNode"
+          ? (paramValue(t.value, scopeGraph) ?? paramValue(t.value, defaultGraph()))
+          : undefined;
+      const js = picked(jsonString);
+      const schemaIri = schema?.termType === "NamedNode" ? schema.value : undefined;
+      const rJson = short(jsonString?.value ?? "?");
+      const label = `ValidateJsonSchemaAssertion ${rJson} vs ${short(schemaIri ?? "?")}`;
+      if (js?.termType !== "Literal" || !schemaIri) {
+        check(
+          label,
+          false,
+          js?.termType !== "Literal" ? "jsonString not bound to a literal" : "jsonSchema not an IRI",
+        );
+        return;
+      }
+      try {
+        const { document: schemaDoc } = await documentLoader(schemaIri, {});
+        let validate = validatorCache.get(schemaIri);
+        if (!validate) {
+          validate = ajv.compile(schemaDoc);
+          validatorCache.set(schemaIri, validate);
+        }
+        const valid = validate(JSON.parse(js.value));
+        check(label, valid, valid ? "" : `errors: ${JSON.stringify(validate.errors)}`);
+      } catch (e: any) {
+        check(label, false, `error: ${e.message}`);
+      }
       return;
     }
     case "MatchJsonPathAssertion": {

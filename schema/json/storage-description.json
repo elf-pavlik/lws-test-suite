@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://w3id.org/lws/test/schema/json/storage-description",
+  "title": "LWS 1.0 storage description resource",
+  "description": "Minimal data-model schema for a Linked Web Storage 1.0 storage description resource, derived from the LWS 1.0 core specification (lws10-core/Discovery.html, § storage description data model / representation). Published under https://w3id.org/lws/test/schema/json/storage-description; the harness serves the local copy under that IRI.",
+  "type": "object",
+  "required": ["@context", "id", "type", "service"],
+  "properties": {
+    "@context": {
+      "description": "MUST be an array starting with the URIs https://www.w3.org/ns/cid/v1 and https://www.w3.org/ns/lws/v1.",
+      "type": "array",
+      "minItems": 2,
+      "prefixItems": [
+        { "const": "https://www.w3.org/ns/cid/v1" },
+        { "const": "https://www.w3.org/ns/lws/v1" }
+      ],
+      "items": { "type": "string" }
+    },
+    "id": {
+      "description": "REQUIRED. The canonical URI of the storage; per CID-1.0 also the canonical URL of the controlled identifier document.",
+      "type": "string",
+      "format": "uri"
+    },
+    "type": {
+      "description": "REQUIRED. A string equal to Storage, or a set of strings containing an item equal to Storage (case-sensitive).",
+      "anyOf": [
+        { "const": "Storage" },
+        {
+          "type": "array",
+          "items": { "type": "string" },
+          "contains": { "const": "Storage" }
+        }
+      ]
+    },
+    "capability": {
+      "description": "OPTIONAL. A set of capabilities; each capability is described by a map. Additional properties MAY be present.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "id": {
+            "description": "OPTIONAL. If present, MUST be a URI.",
+            "type": "string",
+            "format": "uri"
+          },
+          "type": {
+            "description": "REQUIRED. A string or a set of strings.",
+            "anyOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } }
+            ]
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "service": {
+      "description": "REQUIRED. A set of services; the set MUST contain a service whose type equals StorageRoot. Each service is described by a map. Additional properties MAY be present.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "serviceEndpoint"],
+        "properties": {
+          "id": {
+            "description": "OPTIONAL. If present, MUST be a URI.",
+            "type": "string",
+            "format": "uri"
+          },
+          "type": {
+            "description": "REQUIRED. A string or a set of strings.",
+            "anyOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } }
+            ]
+          },
+          "serviceEndpoint": {
+            "description": "REQUIRED. MUST be a URI.",
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "additionalProperties": true
+      },
+      "contains": {
+        "description": "The set MUST contain a service whose type equals StorageRoot.",
+        "type": "object",
+        "required": ["type"],
+        "properties": {
+          "type": {
+            "anyOf": [
+              { "const": "StorageRoot" },
+              { "type": "array", "contains": { "const": "StorageRoot" } }
+            ]
+          }
+        }
+      }
+    }
+  }
+}
