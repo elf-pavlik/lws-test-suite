@@ -37,7 +37,19 @@ for (const file of SOURCES) {
 // canonical generator (see the vocab README: npx yml2vocab -v vocabulary -t template.html -c)
 await $`bunx yml2vocab -v vocabulary -t template.html -c`.cwd(work).quiet();
 
-const context = await readFile(join(work, "vocabulary.context.jsonld"), "utf8");
-JSON.parse(context); // fail loudly on a malformed document
-await writeFile(OUT, context);
-console.log(`wrote ${OUT} (${context.length} bytes, from ${RAW_BASE}/vocabulary.yml)`);
+const context = JSON.parse(await readFile(join(work, "vocabulary.context.jsonld"), "utf8"));
+
+// local fix (track upstream w3c/lws-protocol): the `expires` term collides
+// with the CID v1 embedded key context's protected `expires`
+// (https://w3id.org/security#expiration) when a storage description carries
+// both LWS webhook-subscription and key material, breaking strict JSON-LD
+// expansion. Drop the term from the local generated copy until the upstream
+// vocab renames it.
+if (context["@context"] && "expires" in context["@context"]) {
+  delete context["@context"].expires;
+  console.log("removed the `expires` term (CID key-context collision)");
+}
+
+const out = JSON.stringify(context, null, 4) + "\n";
+await writeFile(OUT, out);
+console.log(`wrote ${OUT} (${out.length} bytes, from ${RAW_BASE}/vocabulary.yml)`);

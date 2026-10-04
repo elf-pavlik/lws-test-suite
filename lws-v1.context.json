@@ -131,10 +131,6 @@
             "@id": "http://www.w3.org/ns/ldp#inbox",
             "@type": "http://www.w3.org/2001/XMLSchema#anyURI"
         },
-        "expires": {
-            "@id": "http://schema.org/expires",
-            "@type": "http://www.w3.org/2001/XMLSchema#dateTime"
-        },
         "access": "https://www.w3.org/ns/lws#access",
         "conformsTo": "http://purl.org/dc/terms/conformsTo",
         "create": "https://www.w3.org/ns/lws#create",

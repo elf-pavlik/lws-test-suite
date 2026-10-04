@@ -95,3 +95,79 @@ tests:
       - type: IdentityAssertion
         received: param:read-after-delete-status
         expected: http-status:NotFound
+
+  - id: can-delete-container
+    type: TestCase
+    name: Can delete a container
+    comment: create a container, read it, delete it, then reading it again fails with 404
+    inputs:
+      - param:storage
+    constants:
+      - param:storage
+      - param:storage-root
+      - param:new-container
+      - param:read-after-delete-status
+    steps:
+        - "@graph":
+          operation:
+            type: ReadStorageDescription
+            target: param:storage
+          bindings:
+            - param:storage-root
+          assertions:
+            - type: IdentityAssertion
+              received: param:status-code
+              expected: http-status:OK
+            - type: ExistanceAssertion
+              received: param:storage-root
+            - type: ShapeAssertion
+              received: param:content
+              validate: shape:DescriptionResource
+
+        - "@graph":
+          operation:
+            type: CreateContainer
+            target: param:storage-root
+          bindings:
+            - id: param:location
+              return: param:new-container
+          assertions:
+            - type: IdentityAssertion
+              received: param:status-code
+              expected: http-status:Created
+
+        - "@graph":
+          operation:
+          - type: ReadContainer
+            target: param:new-container
+          assertions:
+            - type: IdentityAssertion
+              received: param:status-code
+              expected: http-status:OK
+
+        - "@graph":
+          operation:
+          - type: DeleteResource
+            target: param:new-container
+          assertions:
+            - type: IdentityAssertion
+              received: param:status-code
+              expected: http-status:NoContent
+
+        - "@graph":
+          operation:
+          - type: ReadContainer
+            target: param:new-container
+          bindings:
+            - id: param:status-code
+              return: param:read-after-delete-status
+          assertions:
+            - type: IdentityAssertion
+              received: param:status-code
+              expected: http-status:NotFound
+
+    # example of an assertion on a bound const
+    assertions:
+      - type: IdentityAssertion
+        received: param:read-after-delete-status
+        expected: http-status:NotFound

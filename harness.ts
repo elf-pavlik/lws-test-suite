@@ -183,31 +183,48 @@ if (!manifestPath || !rulesPath || !storageUri) {
 // 0. status-codes vocabulary (cached Turtle next to the manifest)
 await loadStatusCodes(dirname(manifestPath));
 
-// 1. manifest -> RDF
+// 1. manifest (YAML) -> JSON-LD once; each test case is converted and
+// reasoned in its own fresh dataset below
 const doc = parseYaml(await readFile(manifestPath, "utf8"));
 const jsonLd = toJsonLd(doc);
-const nquads = (await jsonld.toRDF(jsonLd, { format: "application/n-quads", documentLoader })) as string;
-const store = new Store();
-// Remap blank-node graph names (jsonld turns @graph-without-@id steps into
-// blank-named graphs) to internal urn:uuid IRIs so the harness can address
-// every step graph from SPARQL/GRAPH and rule conclusions alike. Authored
-// graph names are kept as-is. A blank graph name is the same RDF resource
-// in graph position and as the rdf:first/rest list item, so every
-// occurrence of the label is replaced consistently.
-const quads = new Parser({ format: "N-Quads" }).parse(nquads);
-const blankGraphNames = new Map<string, string>();
-for (const quad of quads) {
-  if (quad.graph.termType === "BlankNode") blankGraphNames.set(quad.graph.value, `urn:uuid:${randomUUID()}`);
+
+let store: Store; // the active test-case dataset (reassigned per case)
+
+/** Convert one JSON-LD document (one test case) into a fresh dataset. */
+function parseToStore(nquads: string): Store {
+  const s = new Store();
+  // Remap blank-node graph names (jsonld turns @graph-without-@id steps into
+  // blank-named graphs) to internal urn:uuid IRIs so the harness can address
+  // every step graph from SPARQL/GRAPH and rule conclusions alike. Authored
+  // graph names are kept as-is. A blank graph name is the same RDF resource
+  // in graph position and as the rdf:first/rest list item, so every
+  // occurrence of the label is replaced consistently.
+  const quads = new Parser({ format: "N-Quads" }).parse(nquads);
+  const blankGraphNames = new Map<string, string>();
+  for (const quad of quads) {
+    if (quad.graph.termType === "BlankNode") blankGraphNames.set(quad.graph.value, `urn:uuid:${randomUUID()}`);
+  }
+  const remap = (term: any) =>
+    term.termType === "BlankNode" && blankGraphNames.has(term.value)
+      ? namedNode(blankGraphNames.get(term.value)!)
+      : term;
+  for (const quad of quads) {
+    s.addQuad(remap(quad.subject), remap(quad.predicate), remap(quad.object), remap(quad.graph));
+  }
+  if (blankGraphNames.size > 0) {
+    console.log(`graph names: ${blankGraphNames.size} blank step graph(s) remapped to urn:uuid`);
+  }
+  return s;
 }
-const remap = (term: any) =>
-  term.termType === "BlankNode" && blankGraphNames.has(term.value)
-    ? namedNode(blankGraphNames.get(term.value)!)
-    : term;
-for (const quad of quads) {
-  store.addQuad(remap(quad.subject), remap(quad.predicate), remap(quad.object), remap(quad.graph));
-}
-if (blankGraphNames.size > 0) {
-  console.log(`graph names: ${blankGraphNames.size} blank step graph(s) remapped to urn:uuid`);
+
+/** Seed this fresh dataset's inputs (param -> storage URI) from the manifest. */
+function seedInputs() {
+  for (const q of store.getQuads(null, lwst.terms.inputs, null, defaultGraph())) {
+    if (q.object.termType === "NamedNode") {
+      store.addQuad(q.object, lwst.terms.value, namedNode(storageUri), defaultGraph());
+      console.log(`input  ${q.object.value} = ${storageUri}`);
+    }
+  }
 }
 
 // rules
@@ -217,18 +234,7 @@ const reason = () => new Reasoner(store).reason(rules);
 // SPARQL engine over the same store (default graph = test-case context)
 const engine = new QueryEngine();
 
-// 2. seed inputs into the default graph (test-case context)
-const inputIris = new Set<string>();
-for (const q of store.getQuads(null, lwst.terms.inputs, null, defaultGraph())) {
-  if (q.object.termType === "NamedNode") inputIris.add(q.object.value);
-}
-if (inputIris.size === 0) {
-  console.error("no inputs found in manifest (expected lwst:inputs with param terms)");
-}
-for (const iri of inputIris) {
-  store.addQuad(namedNode(iri), lwst.terms.value, namedNode(storageUri), defaultGraph());
-  console.log(`input  ${iri} = ${storageUri}`);
-}
+// 2. inputs are seeded per test case by seedInputs() above
 
 // helpers
 const one = (s: any, pred: any, graph?: any) =>
@@ -370,21 +376,28 @@ async function liftConstants(constants: any[], stepGraph: any) {
 }
 
 // 3. run the tests
-// Test nodes in the default graph, paired with the JSON-LD tests (same
-// document order); each test's step graphs come from its rdf:first/rest
-// list, in order, with the blank-node names jsonld assigned.
-const testNodes = store.getQuads(null, rdf.terms.type, namedNode(LWST + "TestCase"), defaultGraph())
-  .map((q) => q.subject);
+// One fresh dataset per test case: the JSON-LD document carrying only this
+// test is converted (manifest-level keys like name/rules ride along
+// harmlessly), remapped, seeded, reasoned and executed in isolation, so
+// same-named params across test cases can never bleed into each other.
 let failedSteps = 0;
 for (let ti = 0; ti < jsonLd.tests.length; ti++) {
   const test = jsonLd.tests[ti];
-  const testNode = testNodes[ti];
+  const nquads = (await jsonld.toRDF(
+    { ...jsonLd, tests: [test] },
+    { format: "application/n-quads", documentLoader },
+  )) as string;
+  store = parseToStore(nquads);
+  seedInputs();
+
+  const testNode = store.getQuads(null, rdf.terms.type, namedNode(LWST + "TestCase"), defaultGraph())[0]?.subject;
   console.log(`\n# ${test.name ?? test.id ?? `test-${ti}`} (${test.id ?? ""})`);
   // declared constants, straight from the RDF (already IRIs)
   const constants = testNode
     ? store.getQuads(testNode, lwst.terms.constants, null, defaultGraph()).map((q) => q.object)
     : [];
-  const graphs = testNodes[ti] ? stepGraphs(testNodes[ti]) : [];
+  // step graphs come from the test's rdf:first/rest list, in order
+  const graphs = testNode ? stepGraphs(testNode) : [];
 
   for (let si = 0; si < (test.steps ?? []).length; si++) {
     const step = test.steps[si];
@@ -465,6 +478,10 @@ for (let ti = 0; ti < jsonLd.tests.length; ti++) {
             console.log(`  response ${res.status} (${contentType}) — ${bodyQuads.length} body triple(s) into step graph`);
           } catch (e: any) {
             console.log(`  response ${res.status} — could not parse RDF body: ${e.message}`);
+            if (e.details?.term) {
+              console.log(`  (protected term redefinition on: ${e.details.term})`);
+            }
+            console.log(`  storage description body: ${bodyText}`);
           }
         } else {
           const b = blankNode();
