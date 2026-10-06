@@ -78,6 +78,8 @@ tests:
             - type: IdentityAssertion
               received: param:status-code
               expected: http-status:Created
+            - type: ExistanceAssertion
+              received: param:linkset
 
         - "@graph":
           operation:
@@ -161,6 +163,10 @@ tests:
             - type: IdentityAssertion
               received: param:status-code
               expected: http-status:Created
+            - type: ExistanceAssertion
+              received: param:linkset
+            - type: ExistanceAssertion
+              received: param:up
 
         - "@graph":
           operation:
@@ -170,6 +176,9 @@ tests:
             - type: IdentityAssertion
               received: param:status-code
               expected: http-status:OK
+            - type: IdentityAssertion
+              received: param:content-type
+              expectedLiteral: application/lws+json
 
         - "@graph":
           operation:

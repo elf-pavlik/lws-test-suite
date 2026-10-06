@@ -40,6 +40,8 @@ import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DataFactory, Parser, Reasoner, Store } from "n3";
 import { termToString } from "rdf-string-ttl";
+import { parse as parseContentTypeHeader } from "content-type";
+import Link from "http-link-header";
 import { QueryEngine } from "@comunica/query-sparql-rdfjs";
 import { createVocabulary } from "rdf-vocabulary";
 import { JSONPath } from "jsonpath-plus";
@@ -66,6 +68,8 @@ const http = createVocabulary(
   "http://www.w3.org/2011/http#",
   "Request", "Response", "RequestHeader", "ResponseHeader",
   "mthd", "absoluteURI", "headers", "sc", "fieldName", "fieldValue", "body",
+  "HeaderElement", "Parameter", "headerElements", "params",
+  "elementName", "elementValue", "paramName", "paramValue",
 );
 const methods = createVocabulary(
   "http://www.w3.org/2011/http-methods#",
@@ -78,8 +82,9 @@ const cnt = createVocabulary(
 const lwst = createVocabulary(
   "https://www.w3.org/ns/lws-tests/v1#",
   "value", "operation", "target", "inputs", "constants", "bindings",
-  "assertions", "steps", "received", "expected", "id", "return",
+  "assertions", "steps", "received", "expected", "expectedLiteral", "id", "return",
   "jsonString", "jsonPath", "jsonSchema", "validate", "with",
+  "linkTarget", "linkRelation",
 );
 
 // namespaces with dynamic local names (status names come from the cached
@@ -188,7 +193,7 @@ function toJsonLd(doc: any): any {
 /** Parse an RDF response body and return its quads (default graph only). */
 async function parseRdfBody(text: string, contentType: string): Promise<any[]> {
   const ct = contentType.split(";")[0].trim().toLowerCase();
-  if (["application/ld+json", "application/lws+cid", "application/json"].includes(ct)) {
+  if (["application/ld+json", "application/lws+cid", "application/lws+json", "application/json"].includes(ct)) {
     const nquads = (await jsonld.toRDF(JSON.parse(text), {
       format: "application/n-quads",
       documentLoader,
@@ -204,6 +209,96 @@ async function parseRdfBody(text: string, contentType: string): Promise<any[]> {
 
 const isRdfContentType = (ct: string) =>
   /turtle|n-triples|n-quads|ld\+json|lws\+cid|\+json$/.test(ct.split(";")[0].toLowerCase());
+
+/** Response headers whose value is a URI-reference (resolved against res.url). */
+const URI_HEADERS = new Set(["location", "content-location"]);
+
+/** Resolve a possibly-relative reference against a base, falling back to the raw ref. */
+const resolveUri = (ref: string, base: string): string => {
+  try { return new URL(ref, base).href; } catch { return ref; }
+};
+
+/** "media type; k=v; ..." -> { mediaType, params } via the content-type package. */
+function parseContentType(value: string): { mediaType: string; params: Array<[string, string]> } {
+  try {
+    const { type, parameters } = parseContentTypeHeader(value);
+    return { mediaType: type, params: Object.entries(parameters) };
+  } catch {
+    return { mediaType: value, params: [] }; // unparseable: keep the whole value as the media type
+  }
+}
+
+/** RFC 8288 link-values via the http-link-header package. */
+function parseLinkHeader(value: string): Array<{ target: string; params: Array<[string, string]> }> {
+  try {
+    return Link.parse(value).refs.map((ref: any) => ({
+      target: ref.uri,
+      params: Object.entries(ref).filter(([k]) => k !== "uri").map(([k, v]) => [k.toLowerCase(), String(v)]),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Add every response header to the step graph as HTTP-in-RDF
+ * (http:ResponseHeader with http:fieldName/http:fieldValue), so rules and
+ * assertions can see them, not just Location. Fetch lowercases header names
+ * and folds duplicate fields (except Set-Cookie) into one comma-separated
+ * value; Set-Cookie is emitted once per cookie. URI-reference headers are
+ * resolved against the response URL (the effective request URI).
+ *
+ * Content-Type and Link are deconstructed into HTTP-in-RDF header elements
+ * (http:HeaderElement / http:Parameter); Link targets get suite terms
+ * (lwst:linkTarget as an IRI, lwst:linkRelation) so N3 rules can join on
+ * them -- the BGP-only reasoner cannot build IRIs from strings.
+ */
+function addResponseHeaders(resp: any, res: Response, stepGraph: any) {
+  const add = (name: string, value: string) => {
+    const h = blankNode();
+    store.addQuad(resp, http.terms.headers, h, stepGraph);
+    store.addQuad(h, rdf.terms.type, http.terms.ResponseHeader, stepGraph);
+    store.addQuad(h, http.terms.fieldName, literal(name), stepGraph);
+    store.addQuad(h, http.terms.fieldValue, literal(URI_HEADERS.has(name) ? resolveUri(value, res.url) : value), stepGraph);
+
+    const addElement = (element: any) => {
+      const e = blankNode();
+      store.addQuad(h, http.terms.headerElements, e, stepGraph);
+      store.addQuad(e, rdf.terms.type, http.terms.HeaderElement, stepGraph);
+      if (element.name) store.addQuad(e, http.terms.elementName, literal(element.name), stepGraph);
+      if (element.value) store.addQuad(e, http.terms.elementValue, literal(element.value), stepGraph);
+      if (element.rel) store.addQuad(e, lwst.terms.linkRelation, literal(element.rel), stepGraph);
+      if (element.target) {
+        store.addQuad(e, lwst.terms.linkTarget, namedNode(resolveUri(element.target, res.url)), stepGraph);
+      }
+      for (const [pn, pv] of element.params ?? []) {
+        const p = blankNode();
+        store.addQuad(e, http.terms.params, p, stepGraph);
+        store.addQuad(p, rdf.terms.type, http.terms.Parameter, stepGraph);
+        store.addQuad(p, http.terms.paramName, literal(pn), stepGraph);
+        store.addQuad(p, http.terms.paramValue, literal(pv), stepGraph);
+      }
+    };
+
+    if (name === "content-type") {
+      const { mediaType, params } = parseContentType(value);
+      addElement({ name: mediaType, params });
+      console.log(`  content-type: ${mediaType}${params.length ? params.map(([n, v]) => ` ${n}=${v}`).join("") : ""}`);
+    } else if (name === "link") {
+      for (const link of parseLinkHeader(value)) {
+        const rel = link.params.find(([n]) => n === "rel")?.[1];
+        addElement({ value: link.target, rel, target: link.target, params: link.params });
+        console.log(`  link ${rel ?? "(no rel)"}: ${resolveUri(link.target, res.url)}`);
+      }
+    }
+  };
+  const cookies = (res.headers as any).getSetCookie?.() ?? [];
+  for (const [name, value] of [...res.headers].sort(([a], [b]) => a.localeCompare(b))) {
+    if (name === "set-cookie" && cookies.length > 0) continue; // emitted per cookie below
+    add(name, value);
+  }
+  for (const cookie of cookies) add("set-cookie", cookie);
+}
 
 // ---------------------------------------------------------------------------
 // Main
@@ -448,7 +543,7 @@ async function assertStep(a: any, scopeGraph: any) {
     return;
   }
   if (type === "IdentityAssertion") {
-    const expected = one(a, lwst.terms.expected, scopeGraph);
+    const expected = one(a, lwst.terms.expected, scopeGraph) ?? one(a, lwst.terms.expectedLiteral, scopeGraph);
     const term = expected ? sparqlTerm(expected) : undefined;
     if (!term) {
       check(`IdentityAssertion ${rLabel} == ∅`, false, "expected is not an IRI or literal");
@@ -460,7 +555,7 @@ async function assertStep(a: any, scopeGraph: any) {
     )).toArray();
     const row = rows[0];
     check(
-      `IdentityAssertion ${rLabel} == ${short(expected.value)}`,
+      `IdentityAssertion ${rLabel} == ${expected.termType === "Literal" ? expected.value : short(expected.value)}`,
       row?.get("ok")?.value === "true",
       `received=${row?.get("got")?.value ?? "∅"}`,
     );
@@ -657,17 +752,8 @@ for (let ti = 0; ti < jsonLd.tests.length; ti++) {
         } else {
           console.log(`  (no http:sc for status ${res.status}; vocabulary lookup failed)`);
         }
-        const location = res.headers.get("location");
-        if (location) {
-          // a relative Location is resolved against the effective request URI
-          // (response.url, the URL that produced the response, after redirects)
-          const absolute = new URL(location, res.url).href;
-          const h = blankNode();
-          store.addQuad(resp, http.terms.headers, h, stepGraph);
-          store.addQuad(h, rdf.terms.type, http.terms.ResponseHeader, stepGraph);
-          store.addQuad(h, http.terms.fieldName, literal("Location"), stepGraph);
-          store.addQuad(h, http.terms.fieldValue, literal(absolute), stepGraph);
-        }
+        // every response header goes into the step graph as HTTP-in-RDF
+        addResponseHeaders(resp, res, stepGraph);
         if (isRdfContentType(contentType)) {
           try {
             const bodyQuads = await parseRdfBody(bodyText, contentType);

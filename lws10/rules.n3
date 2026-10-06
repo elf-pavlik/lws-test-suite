@@ -182,7 +182,7 @@
 #   ?resp  a http:Response ;
 #          http:sc statuses:Created ;
 #          http:headers [ a http:ResponseHeader ;
-#                         http:fieldName "Location" ;
+#                         http:fieldName "location" ;
 #                         http:fieldValue ?location ] ;
 #          http:body ?body .
 #
@@ -219,10 +219,11 @@
 } .
 
 # Location response header -> param:location
+# (fetch/undici lowercases response header field names, so match "location")
 {
   ?resp a http:Response ;
         http:headers ?header .
-  ?header http:fieldName "Location" ;
+  ?header http:fieldName "location" ;
           http:fieldValue ?location .
 }
 =>
@@ -310,4 +311,43 @@
 =>
 {
   param:storage-root lwst:value ?storage-root .
+} .
+
+# ---- deconstructed response headers (parsed by the harness) ----
+#
+# The harness parses Content-Type and Link into http:HeaderElement /
+# http:Parameter triples in the step graph (and lwst:linkTarget /
+# lwst:linkRelation for Link elements); these rules expose the well-known
+# ones as parameters.
+
+# content-type media type (no parameters) -> param:content-type
+# (the raw header value incl. parameters stays on http:fieldValue)
+{
+  ?h http:fieldName "content-type" ;
+     http:headerElements ?e .
+  ?e http:elementName ?m .
+}
+=>
+{
+  param:content-type lwst:value ?m .
+} .
+
+# Link rel="linkset" -> param:linkset (the linkset target)
+{
+  ?e lwst:linkRelation "linkset" ;
+     lwst:linkTarget ?t .
+}
+=>
+{
+  param:linkset lwst:value ?t .
+} .
+
+# Link rel="up" -> param:up (the parent container)
+{
+  ?e lwst:linkRelation "up" ;
+     lwst:linkTarget ?t .
+}
+=>
+{
+  param:up lwst:value ?t .
 } .
