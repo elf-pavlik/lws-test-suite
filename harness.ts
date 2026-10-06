@@ -39,6 +39,7 @@ import { readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DataFactory, Parser, Reasoner, Store } from "n3";
+import { termToString } from "rdf-string-ttl";
 import { QueryEngine } from "@comunica/query-sparql-rdfjs";
 import { createVocabulary } from "rdf-vocabulary";
 import { JSONPath } from "jsonpath-plus";
@@ -301,20 +302,28 @@ function stepGraphs(testNode: any): any[] {
 /**
  * Materialize the constants referenced inside a step graph, from the
  * context: a cheap local copy of the param -> value triples the step's own
- * rules need to join on (their premises cannot span graphs).
+ * rules need to join on (their premises cannot span graphs). A SPARQL
+ * CONSTRUCT picks the values from the default-graph context for every
+ * param IRI referenced anywhere in the step graph (subject or object
+ * position); the results are copied into the step graph. The mirror image
+ * of liftConstants() below.
  */
-function materializeConstants(stepGraph: any) {
-  const needed = new Set<string>();
-  for (const q of store.getQuads(null, null, null, stepGraph)) {
-    for (const term of [q.subject, q.object]) {
-      if (term.termType === "NamedNode" && term.value.startsWith(PARAM)) needed.add(term.value);
-    }
-  }
+async function materializeConstants(stepGraph: any) {
+  const quads = await engine.queryQuads(
+    `CONSTRUCT { ?p <${LWST}value> ?v }
+     WHERE {
+       { GRAPH <${stepGraph.value}> { ?s ?pp ?p } }
+       UNION
+       { GRAPH <${stepGraph.value}> { ?p ?pp ?o } }
+       FILTER(STRSTARTS(STR(?p), "${PARAM}"))
+       ?p <${LWST}value> ?v
+     }`,
+    { sources: [store] },
+  );
   let copied = 0;
-  for (const iri of needed) {
-    const v = paramValue(iri, defaultGraph());
-    if (v) {
-      store.addQuad(namedNode(iri), lwst.terms.value, v, stepGraph);
+  for await (const q of quads) {
+    if (store.getQuads(q.subject, q.predicate, q.object, stepGraph).length === 0) {
+      store.addQuad(q.subject, q.predicate, q.object, stepGraph);
       copied++;
     }
   }
@@ -326,6 +335,24 @@ const report = { passed: 0, failed: 0, skipped: 0 };
 function check(label: string, ok: boolean, detail: string) {
   if (ok) report.passed++; else report.failed++;
   console.log(`  ${ok ? "PASS" : "FAIL"} ${label}${detail ? ` — ${detail}` : ""}`);
+}
+
+/** A term in SPARQL query syntax (IRIs and literals; others give undefined). */
+function sparqlTerm(t: any): string | undefined {
+  return t.termType === "NamedNode" || t.termType === "Literal" ? termToString(t) : undefined;
+}
+
+/**
+ * A `?got` pattern for the value of one param in the assertion scope: the
+ * step graph for a step assertion, the context (default graph) for a
+ * test-level one. Params a step references are materialized into its graph
+ * before reasoning, and test-level params are lifted into the context, so
+ * the pattern reads a single graph and needs no cross-scope fallback.
+ */
+function valuePattern(scopeGraph: any, param: string): string {
+  return scopeGraph.termType === "DefaultGraph"
+    ? `<${param}> <${LWST}value> ?got`
+    : `GRAPH <${scopeGraph.value}> { <${param}> <${LWST}value> ?got }`;
 }
 
 /**
@@ -406,39 +433,41 @@ async function assertStep(a: any, scopeGraph: any) {
     return;
   }
 
-  const value = received
-    ? (paramValue(received.value, scopeGraph) ?? paramValue(received.value, defaultGraph()))
-    : undefined;
-  let got: string | undefined;
-  switch (value?.termType) {
-    case "NamedNode":
-    case "Literal":
-      got = value.value;
-      break;
-    case undefined:
-      break; // unbound: leave got undefined, assertions fail below
-    default:
-      report.skipped++;
-      console.log(`  SKIP ${type} — unsupported received term type ${value.termType}`);
+  // ExistanceAssertion / IdentityAssertion: one small query per assertion,
+  // scoped to its own received param (a named node, so it embeds cleanly).
+  // The assertion node itself -- often blank -- never needs to be addressed.
+  // The value lookup/comparison runs in SPARQL because the BGP-only N3
+  // reasoner cannot compare values.
+  if (type === "ExistanceAssertion") {
+    const rows = await (await engine.queryBindings(
+      `SELECT ?got WHERE { ${valuePattern(scopeGraph, received.value)} }`,
+      { sources: [store] },
+    )).toArray();
+    const got = rows[0]?.get("got");
+    check(`ExistanceAssertion ${rLabel}`, got !== undefined, got?.value ?? "not bound");
+    return;
+  }
+  if (type === "IdentityAssertion") {
+    const expected = one(a, lwst.terms.expected, scopeGraph);
+    const term = expected ? sparqlTerm(expected) : undefined;
+    if (!term) {
+      check(`IdentityAssertion ${rLabel} == ∅`, false, "expected is not an IRI or literal");
       return;
+    }
+    const rows = await (await engine.queryBindings(
+      `SELECT ?got (?got = ${term} AS ?ok) WHERE { ${valuePattern(scopeGraph, received.value)} }`,
+      { sources: [store] },
+    )).toArray();
+    const row = rows[0];
+    check(
+      `IdentityAssertion ${rLabel} == ${short(expected.value)}`,
+      row?.get("ok")?.value === "true",
+      `received=${row?.get("got")?.value ?? "∅"}`,
+    );
+    return;
   }
 
   switch (type) {
-    case "ExistanceAssertion":
-      check(`ExistanceAssertion ${rLabel}`, got !== undefined, got ?? "not bound");
-      return;
-    case "IdentityAssertion": {
-      const expected = one(a, lwst.terms.expected, scopeGraph);
-      const expectedValue = expected && (expected.termType === "NamedNode" || expected.termType === "Literal")
-        ? expected.value
-        : undefined;
-      check(
-        `IdentityAssertion ${rLabel} == ${expected ? short(expected.value) : "∅"}`,
-        got === expectedValue,
-        `received=${got ?? "∅"}`,
-      );
-      return;
-    }
     case "ValidateJsonSchemaAssertion": {
       // jsonString is a param holding the raw response body text; jsonSchema
       // is the JSON Schema IRI (the harness serves the local copy under the
@@ -560,26 +589,35 @@ for (let ti = 0; ti < jsonLd.tests.length; ti++) {
   const graphs = testNode ? stepGraphs(testNode) : [];
 
   for (let si = 0; si < (test.steps ?? []).length; si++) {
-    const step = test.steps[si];
     const stepGraph = graphs[si];
-    const ops = Array.isArray(step["@graph"][0]?.operation)
-      ? step["@graph"][0].operation
-      : [step["@graph"][0]?.operation].filter(Boolean);
-    if (ops.length === 0) { console.error(`  NO OPERATION in step ${si}`); failedSteps++; continue; }
-
     if (!stepGraph) {
       console.error(`  NO GRAPH for step ${si + 1}`);
       failedSteps++;
       continue;
     }
     console.log(`\nstep ${si + 1}`);
-    materializeConstants(stepGraph);
+
+    // the step's operations are its lwst:target bearers; a SPARQL lookup
+    // finds them (and their types) without poking at the JSON-LD shape
+    const opRows = await (await engine.queryBindings(
+      `SELECT ?type ?target WHERE {
+         GRAPH <${stepGraph.value}> { ?op a ?type ; <${LWST}target> ?target }
+       }`,
+      { sources: [store] },
+    )).toArray();
+    const ops = opRows.map((r: any) => ({
+      type: short(r.get("type").value),
+      target: r.get("target")?.value,
+    }));
+    if (ops.length === 0) { console.error(`  NO OPERATION in step ${si}`); failedSteps++; continue; }
+
+    await materializeConstants(stepGraph);
     reason();
 
     // execute: one request per operation in the step
     let stepOk = true;
     for (const op of ops) {
-      console.log(`  execute ${op.type} ${String(op.target ?? "")}`);
+      console.log(`  execute ${op.type}${op.target ? ` ${short(op.target)}` : ""}`);
       // find the operation node's derived request: any op typed by the rules
       let found = false;
       for (const q of store.getQuads(null, rdf.terms.type, http.terms.Request, stepGraph)) {
@@ -621,11 +659,14 @@ for (let ti = 0; ti < jsonLd.tests.length; ti++) {
         }
         const location = res.headers.get("location");
         if (location) {
+          // a relative Location is resolved against the effective request URI
+          // (response.url, the URL that produced the response, after redirects)
+          const absolute = new URL(location, res.url).href;
           const h = blankNode();
           store.addQuad(resp, http.terms.headers, h, stepGraph);
           store.addQuad(h, rdf.terms.type, http.terms.ResponseHeader, stepGraph);
           store.addQuad(h, http.terms.fieldName, literal("Location"), stepGraph);
-          store.addQuad(h, http.terms.fieldValue, literal(new URL(location, storageUri).href), stepGraph);
+          store.addQuad(h, http.terms.fieldValue, literal(absolute), stepGraph);
         }
         if (isRdfContentType(contentType)) {
           try {
@@ -656,14 +697,18 @@ for (let ti = 0; ti < jsonLd.tests.length; ti++) {
         reason(); // derive param:status-code, param:location, storage-root, bindings...
 
         // bindings: id -> return were derived by the rules (lwst:value on
-        // the return param); report the ones that got a value
-        for (const bq of store.getQuads(null, lwst.terms.bindings, null, stepGraph)) {
-          const b = bq.object;
-          const id = one(b, lwst.terms.id, stepGraph);
-          const ret = one(b, lwst.terms.return, stepGraph);
-          if (!id || !ret) continue; // shorthand bindings have no id/return
-          const v = paramValue(id.value, stepGraph);
-          if (v) console.log(`  bound ${short(ret.value)} <- ${short(id.value)} = ${v.value}`);
+        // the return param); a SPARQL lookup reports the ones that got a value
+        const boundRows = await (await engine.queryBindings(
+          `SELECT ?id ?ret ?value WHERE {
+             GRAPH <${stepGraph.value}> {
+               ?binding <${LWST}id> ?id ; <${LWST}return> ?ret .
+               ?id <${LWST}value> ?value
+             }
+           }`,
+          { sources: [store] },
+        )).toArray();
+        for (const r of boundRows) {
+          console.log(`  bound ${short(r.get("ret").value)} <- ${short(r.get("id").value)} = ${r.get("value").value}`);
         }
       }
       if (!found) {
