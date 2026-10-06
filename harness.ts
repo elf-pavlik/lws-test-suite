@@ -50,7 +50,7 @@ import jsonld from "jsonld";
 import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
 import ShEx from "shex";
-import { LWS_TEST_CONTEXT, documentLoader } from "./context";
+import { LWS_TEST_CONTEXT, LINKSET_CONTEXT_IRI, documentLoader } from "./context";
 
 const { namedNode, blankNode, literal, defaultGraph } = DataFactory;
 
@@ -193,8 +193,14 @@ function toJsonLd(doc: any): any {
 /** Parse an RDF response body and return its quads (default graph only). */
 async function parseRdfBody(text: string, contentType: string): Promise<any[]> {
   const ct = contentType.split(";")[0].trim().toLowerCase();
-  if (["application/ld+json", "application/lws+cid", "application/lws+json", "application/json"].includes(ct)) {
-    const nquads = (await jsonld.toRDF(JSON.parse(text), {
+  if (["application/ld+json", "application/lws+cid", "application/lws+json", "application/linkset+json", "application/json"].includes(ct)) {
+    const doc = JSON.parse(text);
+    // RFC 9264 linksets use JSON keys (anchor/href/linkset), not JSON-LD;
+    // inject the linkset JSON-LD context so jsonld can expand them to RDF
+    if (typeof doc?.["@context"] === "undefined" && Array.isArray(doc?.["linkset"])) {
+      doc["@context"] = LINKSET_CONTEXT_IRI;
+    }
+    const nquads = (await jsonld.toRDF(doc, {
       format: "application/n-quads",
       documentLoader,
     })) as string;

@@ -86,6 +86,26 @@
       http:mthd methods:GET .
 } .
 
+# Read linkset -- https://www.rfc-editor.org/rfc/rfc9264.html
+# GET the resource's linkset (its .meta), negotiating the RFC 9264
+# application/linkset+json JSON representation.
+{
+  ?op a lwst:ReadLinkset ;
+      lwst:target ?target .
+  ?target lwst:value ?uri .
+}
+=>
+{
+  ?op a http:Request ;
+      http:absoluteURI ?uri ;
+      http:mthd methods:GET ;
+      http:headers [
+        a http:RequestHeader ;
+        http:fieldName "Accept" ;
+        http:fieldValue "application/linkset+json"
+      ] .
+} .
+
 # Create resource -- https://w3c.github.io/lws-protocol/lws10-core/#create-resource
 # Generic create binding: POST to the target container. Use the more
 # specific CreateContainer / CreateDataResource when the kind of the new
@@ -350,4 +370,14 @@
 =>
 {
   param:up lwst:value ?t .
+} .
+
+# RFC 9264 linkset (parsed to RDF with the linkset JSON-LD context): the
+# "up" relation binds param:up (the parent container)
+{
+  ?r <http://www.iana.org/assignments/relation/up> ?parent .
+}
+=>
+{
+  param:up lwst:value ?parent .
 } .

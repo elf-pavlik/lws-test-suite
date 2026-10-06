@@ -42,6 +42,7 @@ tests:
       - param:storage
       - param:storage-root
       - param:new-resource
+      - param:linkset
       - param:read-after-delete-status
     steps:
         - "@graph":
@@ -80,6 +81,17 @@ tests:
               expected: http-status:Created
             - type: ExistanceAssertion
               received: param:linkset
+
+        - "@graph":
+          operation:
+            type: ReadLinkset
+            target: param:linkset
+          assertions:
+            - type: IdentityAssertion
+              received: param:status-code
+              expected: http-status:OK
+            - type: ExistanceAssertion
+              received: param:up
 
         - "@graph":
           operation:
@@ -127,6 +139,7 @@ tests:
       - param:storage
       - param:storage-root
       - param:new-container
+      - param:linkset
       - param:read-after-delete-status
     steps:
         - "@graph":
@@ -165,6 +178,17 @@ tests:
               expected: http-status:Created
             - type: ExistanceAssertion
               received: param:linkset
+            - type: ExistanceAssertion
+              received: param:up
+
+        - "@graph":
+          operation:
+            type: ReadLinkset
+            target: param:linkset
+          assertions:
+            - type: IdentityAssertion
+              received: param:status-code
+              expected: http-status:OK
             - type: ExistanceAssertion
               received: param:up
 

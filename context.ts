@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 import jsonld from "jsonld";
 import LWS_TEST_CONTEXT from "./context.json" with { type: "json" };
 import LWS_V1_CONTEXT from "./lws-v1.context.json" with { type: "json" };
+import LINKSET_CONTEXT from "./linkset.context.json" with { type: "json" };
 import STORAGE_DESCRIPTION_SCHEMA from "./schema/json/storage-description.json" with { type: "json" };
 
 export { LWS_TEST_CONTEXT };
@@ -22,6 +23,14 @@ export const LWS_TEST_CONTEXT_IRI = "https://w3id.org/lws/test/context";
 
 /** IRI of the LWS vocabulary context document. */
 export const LWS_V1_CONTEXT_IRI = "https://www.w3.org/ns/lws/v1";
+
+/**
+ * JSON-LD context for RFC 9264 linksets (served locally, same strategy as
+ * the other contexts). It maps the linkset JSON keys (anchor/href/linkset)
+ * to @id/@graph and expands registered relation names such as "up" to
+ * IANA relation type IRIs (http://www.iana.org/assignments/relation/...).
+ */
+export const LINKSET_CONTEXT_IRI = "https://w3id.org/lws/test/context/linkset";
 
 /**
  * JSON Schemas published under https://w3id.org/lws/test/schema/json/ and
@@ -67,6 +76,9 @@ export async function documentLoader(url: string, options: any): Promise<any> {
   }
   if (url === LWS_V1_CONTEXT_IRI) {
     return { contextUrl: null, document: LWS_V1_CONTEXT, documentUrl: url };
+  }
+  if (url === LINKSET_CONTEXT_IRI) {
+    return { contextUrl: null, document: LINKSET_CONTEXT, documentUrl: url };
   }
   const localDocument = localDocuments.get(url);
   if (localDocument) {
